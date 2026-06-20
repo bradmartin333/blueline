@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(find \"C:\\\\source\\\\repos\\\\paco-juego\\\\games\\\\fishing\" -type f | head -100)",
-      "Read(//c/source/repos/paco-juego/games/fishing/**)"
-    ]
-  }
-}
