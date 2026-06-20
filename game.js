@@ -22,14 +22,14 @@ const IMG = {
 // ---------------- DOM ----------------
 const bg = $('background'), fg = $('foreground');
 const castBtn = $('cast-btn'), mendBtn = $('mend-btn'), setBtn = $('set-btn'), reelBtn = $('reel-in-btn');
-const driftHud = $('drift-hud'), driftFill = $('drift-fill'), driftVal = $('drift-val');
+const driftMini = $('drift-mini'), driftMiniFill = $('drift-mini-fill'), driftMiniVal = $('drift-mini-val');
 const takePrompt = $('take-prompt');
-const fightEl = $('fight'), tensionFill = $('tension-fill'), greenZone = $('green-zone'),
-      indicator = $('indicator'), stripBtn = $('strip-btn'), pips = $('progress-pips'),
-      fightTitle = $('fight-title'), fightSub = $('fight-sub');
+const fightEl = $('fight'), greenZone = $('green-zone'),
+      indicator = $('indicator'), stripBtn = $('strip-btn');
 const reveal = $('reveal'), revRibbon = $('reveal-ribbon'), revSpecies = $('reveal-species'),
       revInches = $('reveal-inches'), revImg = $('reveal-img'), revFlavor = $('reveal-flavor'),
       releaseBtn = $('release-btn');
+const tackleEl = $('tackle'), tackleToggleBtn = $('tackle-toggle'), panelCloseBtn = $('panel-close');
 
 // ---------------- game state ----------------
 const ST = { IDLE: 0, CASTING: 1, DRIFT: 2, BITE: 3, FIGHT: 4, REVEAL: 5 };
@@ -170,9 +170,7 @@ function renderReport() {
   const p = A.PHASES[cond.phaseIdx];
   const water = A.WATER[cond.waterId];
   $('rep-phase').textContent = p.label;
-  $('clock-phase').textContent = p.label;
   $('rep-hatch').textContent = A.HATCHES[cond.hatch].label;
-  $('clock-hatch').textContent = A.HATCHES[cond.hatch].label;
   $('rep-light').textContent = p.light === 'low' ? 'Low' : p.light === 'soft' ? 'Soft' : 'Bright';
   $('rep-water').textContent = water.label;
   // dominant feeding depth
@@ -306,10 +304,48 @@ function closePicker() { $('fly-picker').classList.remove('open'); }
 // =========================================================
 function resize() {
   const wrap = $('stage-wrap');
-  const sc = Math.min(wrap.clientWidth / 1472, wrap.clientHeight / 704);
+  const ww = wrap.clientWidth, wh = wrap.clientHeight;
+  const sc = (window.innerWidth < 768 && wh > ww)
+    ? wh / 704                           // portrait mobile: fill height
+    : Math.min(ww / 1472, wh / 704);    // landscape / desktop: fit
   $('game-container').style.transform = `scale(${sc})`;
 }
 window.addEventListener('resize', resize);
+
+// =========================================================
+//  PANEL TOGGLE
+// =========================================================
+const isMobile = () => window.innerWidth < 768;
+
+function setPanelOpen(open) {
+  if (isMobile()) {
+    tackleEl.classList.toggle('open', open);
+    tackleEl.classList.toggle('collapsed', !open);
+  } else {
+    tackleEl.classList.toggle('collapsed', !open);
+  }
+  tackleToggleBtn.textContent = open ? '✕' : '☰';
+  // re-scale after layout shift (desktop only)
+  if (!isMobile()) setTimeout(resize, 300);
+}
+
+// mobile: start closed; desktop: start open
+setPanelOpen(!isMobile());
+
+tackleToggleBtn.addEventListener('click', () => {
+  const isOpen = isMobile() ? tackleEl.classList.contains('open') : !tackleEl.classList.contains('collapsed');
+  setPanelOpen(!isOpen);
+});
+panelCloseBtn.addEventListener('click', () => setPanelOpen(false));
+
+window.addEventListener('resize', () => {
+  // crossing breakpoint: restore sensible default
+  if (!isMobile() && tackleEl.classList.contains('open')) {
+    tackleEl.classList.remove('open');
+    tackleEl.classList.remove('collapsed');
+    tackleToggleBtn.textContent = '✕';
+  }
+});
 
 // =========================================================
 //  GAME FLOW
@@ -327,7 +363,7 @@ function toIdle() {
   bg.src = IMG.castBg; paintLight();
   fg.style.display = 'none';
   fg.className = '';
-  driftHud.classList.add('hidden');
+  driftMini.classList.add('hidden');
   takePrompt.classList.add('hidden');
   reveal.classList.add('hidden');
   fightEl.classList.add('hidden');
@@ -367,7 +403,7 @@ function startDrift() {
   driftQuality = 100;
   dragFreeUntil = 0;
   mendCoolUntil = 0;
-  driftHud.classList.remove('hidden');
+  driftMini.classList.remove('hidden');
   updateDriftHud();
   setControls({ mend: true, reel: true });
   mendBtn.classList.remove('cooling');
@@ -407,12 +443,16 @@ function startDriftLoop() {
 function stopDrift() { cancelAnimationFrame(driftRAF); }
 
 function updateDriftHud() {
-  driftFill.style.width = driftQuality + '%';
-  driftFill.classList.toggle('warn', driftQuality <= 55 && driftQuality > 28);
-  driftFill.classList.toggle('bad', driftQuality <= 28);
-  driftVal.textContent = driftQuality > 70 ? 'DRAG-FREE'
+  const label = driftQuality > 70 ? 'DRAG-FREE'
     : driftQuality > 40 ? 'SOME DRAG'
     : driftQuality > 15 ? 'DRAGGING' : 'BLOWN OUT';
+  const isWarn = driftQuality <= 55 && driftQuality > 28;
+  const isBad  = driftQuality <= 28;
+
+  driftMiniFill.style.width = driftQuality + '%';
+  driftMiniFill.classList.toggle('warn', isWarn);
+  driftMiniFill.classList.toggle('bad', isBad);
+  driftMiniVal.textContent = label;
 }
 
 function rollBite(now) {
@@ -495,8 +535,8 @@ function triggerBite(e) {
   fg.classList.remove('bob', 'rotate-in');
   fg.src = IMG.drift; void fg.offsetWidth;
   fg.classList.add('shake');
-  takePrompt.classList.add('hidden');     // keep it subtle — the SET button is the cue
-  driftHud.classList.add('hidden');
+  takePrompt.classList.add('hidden');     // SET button is the cue
+  driftMini.classList.add('hidden');
   setControls({ set: true });
   AUDIO.play('hookup');
 
@@ -522,7 +562,7 @@ function missBite() {
   AUDIO.play('fail');
   bite = null;
   flashNote('Missed the take.');
-  driftHud.classList.remove('hidden');
+  driftMini.classList.remove('hidden');
   setControls({ mend: true, reel: true });
   pity = Math.min(2.3, pity + 0.2);
   lastBiteTick = performance.now();
@@ -533,6 +573,7 @@ function missBite() {
 //  FIGHT (tension minigame)
 // =========================================================
 let fight = null;
+let fightTimeout = null;
 function startFight() {
   state = ST.FIGHT;
   const s = A.SPECIES[bite.speciesId];
@@ -540,19 +581,19 @@ function startFight() {
   const sizeFactor = (bite.sizeIn - s.size[0]) / (s.size[2] - s.size[0]); // 0..1
   const need = Math.round(3 + s.fight * 3.5 + sizeFactor * 2);     // strips to land
   const speed = 0.85 + s.fight * 0.9 + sizeFactor * 0.5;           // marker speed
-  // thin tippet (small hook) on a big fish → smaller green zone + higher throw risk
   const tippetRisk = Math.max(0, (lead.hook - 12) / 10) * (0.4 + sizeFactor);
   fight = { need, got: 0, speed, pos: 0, dir: 1, zoneL: 0, zoneW: 0,
             tippetRisk, raf: null, base: 0.46 };
 
   fightEl.classList.remove('hidden');
-  fightTitle.textContent = bite.trophy ? 'BIG FISH!' : 'FISH ON!';
-  fightSub.textContent = 'Tap STRIP when the marker is in the green';
   fg.style.display = 'none';
   placeZone();
-  renderPips();
   AUDIO.play('reel', 4);
   runIndicator();
+
+  // 20-second timeout — fish escapes if you idle
+  clearTimeout(fightTimeout);
+  fightTimeout = setTimeout(() => { if (state === ST.FIGHT) loseFish(false); }, 20000);
 }
 function placeZone() {
   const W = 100;
@@ -560,14 +601,6 @@ function placeZone() {
   fight.zoneL = Math.random() * (W - fight.zoneW);
   greenZone.style.left = fight.zoneL + '%';
   greenZone.style.width = fight.zoneW + '%';
-}
-function renderPips() {
-  pips.innerHTML = '';
-  for (let i = 0; i < fight.need; i++) {
-    const d = document.createElement('div');
-    d.className = 'pip' + (i < fight.got ? ' on' : '');
-    pips.appendChild(d);
-  }
 }
 function runIndicator() {
   let last = performance.now();
@@ -578,7 +611,6 @@ function runIndicator() {
     if (fight.pos >= 100) { fight.pos = 100; fight.dir = -1; }
     if (fight.pos <= 0) { fight.pos = 0; fight.dir = 1; }
     indicator.style.left = fight.pos + '%';
-    tensionFill.style.width = fight.pos + '%';
     fight.raf = requestAnimationFrame(loop);
   }
   fight.raf = requestAnimationFrame(loop);
@@ -591,32 +623,26 @@ function doStrip() {
   if (inZone) {
     fight.got++;
     AUDIO.play('reel', 3);
-    renderPips();
     if (fight.got >= fight.need) { landFish(); return; }
     placeZone();
   } else {
     // slack — chance the fish throws the hook
     const throwChance = 0.18 + fight.tippetRisk * 0.5;
     if (Math.random() < throwChance) {
-      // dramatic trophy-brown break-off uses the "pulled" frame
       loseFish(bite.trophy && bite.speciesId === 'brown' && Math.random() < 0.5);
       return;
     }
     fight.got = Math.max(0, fight.got - 1);
-    renderPips();
     placeZone();
-    flashFight('Slack! Keep tight.');
+    flashNote('Slack! Keep tight.');
   }
-}
-function flashFight(msg) {
-  fightSub.textContent = msg;
-  setTimeout(() => { if (state === ST.FIGHT) fightSub.textContent = 'Tap STRIP when the marker is in the green'; }, 900);
 }
 
 // =========================================================
 //  RESOLUTION
 // =========================================================
 function landFish() {
+  clearTimeout(fightTimeout);
   cancelAnimationFrame(fight.raf);
   state = ST.REVEAL;
   fightEl.classList.add('hidden');
@@ -650,6 +676,7 @@ function landFish() {
 }
 
 function loseFish(dramatic) {
+  clearTimeout(fightTimeout);
   if (fight) cancelAnimationFrame(fight.raf);
   state = ST.REVEAL;
   fightEl.classList.add('hidden');

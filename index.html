@@ -19,23 +19,17 @@
       <img id="foreground" alt="">
     </div>
 
-    <!-- HUD -->
-    <div id="scene-clock" class="hud">
-      <span class="dot"></span>
-      <b id="clock-phase">Morning</b>
-      <span class="sep">·</span>
-      <span id="clock-hatch">PMD Hatch</span>
+    <!-- stage overlay buttons -->
+    <button id="mute-btn" class="stage-corner top-left muted" title="Sound on/off">♪</button>
+    <button id="tackle-toggle" class="stage-corner top-right" title="Toggle tackle panel">☰</button>
+
+    <!-- compact drift quality bar (shown during drift) -->
+    <div id="drift-mini" class="hidden">
+      <div id="drift-mini-fill"></div>
+      <span id="drift-mini-val">DRAG-FREE</span>
     </div>
 
-    <div id="drift-hud" class="hud hidden">
-      <div class="row">
-        <span class="lab">DRIFT QUALITY</span>
-        <span class="val" id="drift-val">DRAG-FREE</span>
-      </div>
-      <div id="drift-track"><div id="drift-fill"></div></div>
-    </div>
-
-    <div id="take-prompt" class="hud hidden">SET!</div>
+    <div id="take-prompt" class="hud-prompt hidden">SET!</div>
 
     <!-- control buttons -->
     <div id="controls">
@@ -45,18 +39,14 @@
       <button id="reel-in-btn" class="btn btn-ghost hidden">REEL IN</button>
     </div>
 
-    <!-- fight minigame -->
+    <!-- fight minigame — simplified -->
     <div id="fight" class="hidden">
-      <div class="fight-title" id="fight-title">FISH ON!</div>
-      <div class="fight-sub" id="fight-sub">Tap STRIP when the marker is in the green</div>
       <div id="tension-wrap">
         <div id="tension-bar">
-          <div id="tension-fill"></div>
           <div id="green-zone"></div>
           <div id="indicator"></div>
         </div>
       </div>
-      <div id="progress-pips"></div>
       <button id="strip-btn" class="btn btn-set" style="animation:none">STRIP</button>
     </div>
 
@@ -81,15 +71,10 @@
 
   <!-- ===================== TACKLE PANEL ===================== -->
   <aside id="tackle">
-    <div class="panel-head">
-      <div class="brand">
-      </div>
-      <button id="mute-btn" class="icon-btn muted" title="Sound on/off">♪</button>
-    </div>
-
     <div class="tabs">
       <button class="tab active" data-tab="tackle">TACKLE</button>
       <button class="tab" data-tab="journal">JOURNAL</button>
+      <button id="panel-close" class="panel-close-btn" title="Close panel">✕</button>
     </div>
 
     <div class="panel-body">
