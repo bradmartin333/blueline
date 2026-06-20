@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>blueline fly fishing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,700;12..96,800&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ===================== SCENE STAGE ===================== -->
+  <div id="stage-wrap">
+    <div id="game-container">
+      <img id="background" alt="stream">
+      <img id="foreground" alt="">
+    </div>
+
+    <!-- HUD -->
+    <div id="scene-clock" class="hud">
+      <span class="dot"></span>
+      <b id="clock-phase">Morning</b>
+      <span class="sep">·</span>
+      <span id="clock-hatch">PMD Hatch</span>
+    </div>
+
+    <div id="drift-hud" class="hud hidden">
+      <div class="row">
+        <span class="lab">DRIFT QUALITY</span>
+        <span class="val" id="drift-val">DRAG-FREE</span>
+      </div>
+      <div id="drift-track"><div id="drift-fill"></div></div>
+    </div>
+
+    <div id="take-prompt" class="hud hidden">SET!</div>
+
+    <!-- control buttons -->
+    <div id="controls">
+      <button id="cast-btn" class="btn btn-cast">CAST</button>
+      <button id="mend-btn" class="btn btn-mend hidden">MEND</button>
+      <button id="set-btn" class="btn btn-set hidden">SET</button>
+      <button id="reel-in-btn" class="btn btn-ghost hidden">REEL IN</button>
+    </div>
+
+    <!-- fight minigame -->
+    <div id="fight" class="hidden">
+      <div class="fight-title" id="fight-title">FISH ON!</div>
+      <div class="fight-sub" id="fight-sub">Tap STRIP when the marker is in the green</div>
+      <div id="tension-wrap">
+        <div id="tension-bar">
+          <div id="tension-fill"></div>
+          <div id="green-zone"></div>
+          <div id="indicator"></div>
+        </div>
+      </div>
+      <div id="progress-pips"></div>
+      <button id="strip-btn" class="btn btn-set" style="animation:none">STRIP</button>
+    </div>
+
+    <!-- fish reveal -->
+    <div id="reveal" class="hidden">
+      <div class="ribbon hidden" id="reveal-ribbon">NEW RECORD</div>
+      <div class="species" id="reveal-species">Brook Trout</div>
+      <div class="size" id="reveal-size"><span id="reveal-inches">0.0</span><span class="in"> in</span></div>
+      <img id="reveal-img" alt="fish">
+      <div class="flavor" id="reveal-flavor"></div>
+      <div class="reveal-actions">
+        <button id="release-btn" class="btn btn-cast">RELEASE &amp; CAST</button>
+      </div>
+    </div>
+
+    <!-- audio nudge -->
+    <div id="audio-nudge">
+      <span>Sound is off. Want the stream?</span>
+      <button id="nudge-on">Turn on</button>
+    </div>
+  </div>
+
+  <!-- ===================== TACKLE PANEL ===================== -->
+  <aside id="tackle">
+    <div class="panel-head">
+      <div class="brand">
+      </div>
+      <button id="mute-btn" class="icon-btn muted" title="Sound on/off">♪</button>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="tackle">TACKLE</button>
+      <button class="tab" data-tab="journal">JOURNAL</button>
+    </div>
+
+    <div class="panel-body">
+      <!-- TACKLE PANE -->
+      <div class="tab-pane active" id="pane-tackle">
+
+        <div id="report">
+          <div class="rep-top">
+            <span class="rep-phase" id="rep-phase">Morning</span>
+          </div>
+          <div class="rep-grid">
+            <div class="rep-cell"><div class="k">HATCH</div><div class="v hatch" id="rep-hatch">PMD</div></div>
+            <div class="rep-cell"><div class="k">LIGHT</div><div class="v" id="rep-light">Soft</div></div>
+            <div class="rep-cell"><div class="k">WATER</div><div class="v" id="rep-water">Gin Clear</div></div>
+            <div class="rep-cell"><div class="k">FEEDING</div><div class="v" id="rep-feed">Mixed</div></div>
+          </div>
+          <div class="rep-blurb" id="rep-blurb">—</div>
+        </div>
+
+        <div id="match">
+          <div class="m-top">
+            <span class="m-lab">TACKLE MATCH</span>
+            <span class="m-verdict" id="match-verdict">—</span>
+          </div>
+          <div class="m-bars" id="match-bars"></div>
+          <div class="m-note" id="match-note">Set up your rig to read the water.</div>
+        </div>
+
+        <div class="sec-label">ROD &amp; ACTION</div>
+        <div id="rod-list"></div>
+
+        <div class="sec-label">RIG</div>
+        <div id="rig-list"></div>
+
+        <div class="sec-label">FLIES</div>
+        <div id="slot-list"></div>
+
+        <div class="tackle-hint">
+          <b>Tip:</b> match your fly to the hatch, present it where fish are feeding, and keep a <b>drag-free drift</b> — mend the moment the meter drops.
+        </div>
+      </div>
+
+      <!-- JOURNAL PANE -->
+      <div class="tab-pane" id="pane-journal">
+        <div class="jr-summary" id="jr-summary"></div>
+        <div class="sec-label">SPECIES LOG</div>
+        <div id="journal-list"></div>
+        <div class="jr-record">Records persist on this device.</div>
+        <div style="text-align:center;margin-top:12px">
+          <button id="reset-journal" class="btn btn-ghost" style="font-size:12px;padding:8px 14px;color:var(--ink-soft);background:var(--paper-2);border-color:rgba(33,29,20,0.25);box-shadow:0 2px 0 rgba(33,29,20,0.2)">RESET LOG</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===================== FLY PICKER ===================== -->
+  <div id="fly-picker">
+    <div class="scrim" id="picker-scrim"></div>
+    <div class="sheet">
+      <div class="sheet-head">
+        <div>
+          <div class="t" id="picker-title">Choose a fly</div>
+          <div class="s" id="picker-sub">TOP SLOT · DRIES</div>
+        </div>
+        <button class="icon-btn" id="picker-close">✕</button>
+      </div>
+      <div class="sheet-body" id="picker-body"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="data.js"></script>
+<script src="audio.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
