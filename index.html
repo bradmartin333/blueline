@@ -16,7 +16,13 @@
   <div id="stage-wrap">
     <div id="game-container">
       <img id="background" alt="stream">
+      <img id="background2" alt="" aria-hidden="true">
+      <svg id="fly-line" viewBox="0 0 1472 704" preserveAspectRatio="none" aria-hidden="true">
+        <path id="fly-line-path"></path>
+        <circle id="fly-dot" r="4"></circle>
+      </svg>
       <img id="foreground" alt="">
+      <div id="cast-line" aria-hidden="true"></div>
     </div>
 
     <!-- stage overlay buttons -->
@@ -58,7 +64,7 @@
       <img id="reveal-img" alt="fish">
       <div class="flavor" id="reveal-flavor"></div>
       <div class="reveal-actions">
-        <button id="release-btn" class="btn btn-cast">RELEASE &amp; CAST</button>
+        <button id="release-btn" class="btn btn-cast">RELEASE</button>
       </div>
     </div>
 
@@ -80,6 +86,11 @@
     <div class="panel-body">
       <!-- TACKLE PANE -->
       <div class="tab-pane active" id="pane-tackle">
+
+        <div id="loc-section" class="hidden">
+          <div class="sec-label">LOCATION</div>
+          <div id="loc-list"></div>
+        </div>
 
         <div id="report">
           <div class="rep-top">

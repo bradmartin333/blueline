@@ -12,6 +12,51 @@ const DATA = {};
 // deep     : down near the bottom
 DATA.DEPTHS = ['surface', 'film', 'shallow', 'deep'];
 
+// ---- Locations ----
+// Each location is a self-contained set of scene art under `dir`, plus a few
+// numbers that tell the engine how to drive it. To add a location, drop a folder
+// of art in assets/locations/<id>/ following the same file names and add an entry
+// here + to LOCATION_ORDER. With one location the in-game selector hides itself.
+//
+//   The cast animation (fg_cast_*.png + line_cast_*.png) is SHARED across locations
+//   in assets/cast/ — the first-person cast looks the same everywhere.
+//
+//   File layout per location (assets/locations/<id>/):
+//     bg_cast.png            — idle / casting backdrop (the still stream)
+//     bg_drift_0.png … _N    — drift backdrops, played in sequence as the fly
+//                              travels downstream (any number of frames)
+//     fg_drift.png           — foreground drift pose (rod held, NO baked fly line)
+//     fg_mend.png            — foreground mend pose (NO baked fly line)
+//     fg_set.png             — hookset close-up
+//     fg_pulled.png          — dramatic "broke you off" frame
+//
+//   driftFrames  : how many bg_drift_* frames exist.
+//   driftFrameMs : ms each drift backdrop holds before the cosmetic hard-cut.
+//   driftTravelMs: ms for the lure to float the whole flyUp→flyDown run (the drift's
+//                  real length; a mend nudges it back upstream a little).
+//   focalX/focalY: 0..1 focal point used to frame the scene on portrait screens.
+//   line         : per-state fly-line anchors in normalized stage coords (0..1 of
+//                  the 1472×704 stage). `rod` is the rod tip. During the drift the
+//                  lure travels flyUp→flyDown — flyUp is where it lands (push it
+//                  toward the top of the frame to land it further from the angler /
+//                  further upstream); flyDown is where the drift ends, nearest you.
+DATA.LOCATIONS = {
+  appalachia: {
+    name: 'Appalachia',
+    blurb: 'Tight, tumbling freestone creek under a hardwood canopy.',
+    dir: 'assets/locations/appalachia',
+    driftFrames: 2,
+    driftFrameMs: 6500,          // bg hard-cut cadence (cosmetic)
+    driftTravelMs: 12000,        // how long the lure takes to float the full run
+    focalX: 0.42, focalY: 0.5,
+    line: {
+      drift: { rod: [0.239, 0.253], flyUp: [0.64, 0.70], flyDown: [0.21, 0.90], sag: 0.06 },
+      mend:  { rod: [0.265, 0.150], sag: 0.12 },
+    },
+  },
+};
+DATA.LOCATION_ORDER = ['appalachia'];
+
 // ---- Hatches / available food ----
 // what the fish are keyed on. The active hatch shifts with time of day.
 DATA.HATCHES = {
@@ -112,14 +157,15 @@ DATA.slotAccepts = function (slot, cat) {
 // comfort: rig weight this rod throws cleanly
 // delicate: presentation finesse (helps spooky fish / small dries in clear water)
 // punch: ability to throw heavy rigs / wind without sloppiness
+// lineColor: color of the dynamically drawn fly line for this rod
 DATA.RODS = {
-  glass3:    { name: 'Creek Glass', line: '3-weight', action: 'slow',
+  glass3:    { name: 'Creek Glass', line: '3-weight', action: 'slow', lineColor: '#8fe3c4',
                cadence: [180, 220, 150, 200], comfort: 'light', delicate: 1.35, punch: 0.7,
                blurb: 'Soft fiberglass. Lays small dries down like a feather; bogs under heavy rigs.' },
-  graphite5: { name: 'All-Water',   line: '5-weight', action: 'medium',
+  graphite5: { name: 'All-Water',   line: '5-weight', action: 'medium', lineColor: '#e7ff8c',
                cadence: [110, 130, 90, 120], comfort: 'medium', delicate: 1.0, punch: 1.0,
                blurb: 'Medium graphite. No weaknesses, no party tricks. The workhorse.' },
-  streamer6: { name: 'Quick-Tip',   line: '6-weight', action: 'fast',
+  streamer6: { name: 'Quick-Tip',   line: '6-weight', action: 'fast', lineColor: '#ff9a40',
                cadence: [70, 85, 60, 80], comfort: 'heavy', delicate: 0.78, punch: 1.4,
                blurb: 'Fast & stiff. Punches heavy nymph rigs and wind; too much for tiny dries.' },
 };
@@ -137,19 +183,19 @@ DATA.weightRank = { light: 0, medium: 1, heavy: 2 };
 // img
 DATA.SPECIES = {
   brook: {
-    name: 'Brook Trout', img: 'assets/brook.png', weight: 1.0,
+    name: 'Brook Trout', img: 'assets/fish/brook.png', weight: 1.0,
     foods: ['caddis','terrestrial','attractor'], depths: ['surface','film','shallow'],
     lightLove: ['low','soft'], spook: 0.6,
     size: [5, 8, 13], trophy: 11, fight: 0.3,
     blurb: 'Eager and gorgeous. Will smash a caddis at dusk all day long.' },
   rainbow: {
-    name: 'Rainbow Trout', img: 'assets/rainbow.png', weight: 0.85,
+    name: 'Rainbow Trout', img: 'assets/fish/rainbow.png', weight: 0.85,
     foods: ['bwo','pmd','scud','attractor'], depths: ['film','shallow','deep'],
     lightLove: ['soft','bright'], spook: 1.0,
     size: [8, 12, 18], trophy: 16, fight: 0.6,
     blurb: 'Mid-column generalist. Acrobatic — expect jumps and screaming runs.' },
   brown: {
-    name: 'Brown Trout', img: 'assets/brown.png', weight: 0.45,
+    name: 'Brown Trout', img: 'assets/fish/brown.png', weight: 0.45,
     foods: ['stonefly','terrestrial','caddis'], depths: ['shallow','deep'],
     lightLove: ['low'], spook: 1.5,
     size: [10, 15, 23], trophy: 18, fight: 0.85,
@@ -158,12 +204,20 @@ DATA.SPECIES = {
 
 DATA.SPECIES_ORDER = ['brook', 'rainbow', 'brown'];
 
-// ---- Catch flavor lines ----
+// ---- Catch flavor lines — about THIS catch / how it went ----
 DATA.CATCH_LINES = {
-  small:  ['A feisty little one.', 'Small but willing.', 'Dinks count too.'],
-  mid:    ['A solid, healthy fish.', 'Good one — proper fight.', 'Beautifully marked.'],
-  big:    ['A real slab.', 'That one pulled back.', 'Net-stretcher.'],
-  trophy: ['A trophy. Hands shaking.', 'Fish of the day.', 'You earned that one.'],
+  small:  ['Ate on the drop and never quit.', 'Tiny, but it slashed the fly hard.',
+           'A pint-sized scrapper — all heart.', 'Quick grab, quicker release.',
+           'Pounced the second it landed.', 'Punched above its weight the whole way in.'],
+  mid:    ['Solid take and a dogged little fight.', 'Used the current well before it tired.',
+           'A clean eat and an honest tussle.', 'Held deep, then slid to hand.',
+           'Took line twice — earned its keep.', 'Textbook drift, textbook fight.'],
+  big:    ['Crushed it and bulldogged for the bottom.', 'Peeled drag and tested every knot.',
+           'Heavy headshakes the whole fight.', 'Owned the run for a good minute.',
+           'Stubborn brute — fought you for every inch.', 'Almost into the backing on that one.'],
+  trophy: ['It ate, then everything went sideways.', 'A screaming run — hands still shaking.',
+           'Bent the rod to the cork and held on.', 'The fish of the day, no contest.',
+           'You\'ll be telling this one for years.', 'Pure adrenaline from the take to the net.'],
 };
 
 window.DATA = DATA;

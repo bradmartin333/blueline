@@ -62,6 +62,7 @@ button { font-family: var(--font-display); cursor: pointer; }
   position: relative;
   width: 1472px;
   height: 704px;
+  flex: 0 0 auto;     /* never let flex shrink the box — the transform owns sizing */
   transform-origin: center center;
   overflow: hidden;
   background: #0d0b07;
@@ -69,12 +70,38 @@ button { font-family: var(--font-display); cursor: pointer; }
   outline: 6px solid #0d0b07;
 }
 
-#background {
+#background, #background2 {
   position: absolute; inset: 0;
   width: 100%; height: 100%;
   object-fit: cover;
-  transition: filter 1.2s ease;
+  transition: opacity 0.6s ease, filter 1.2s ease;
 }
+/* #background2 is the crossfade layer; it fades in over #background then they swap */
+#background2 { opacity: 0; }
+
+/* dynamically drawn fly line (rod tip → fly) — sits over the water but BEHIND the
+   angler/rod foreground, so the arm and hand naturally occlude it */
+#fly-line {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  z-index: 2; pointer-events: none;
+  opacity: 0; transition: opacity 0.3s ease;
+}
+#fly-line.show { opacity: 1; }
+#fly-line-path {
+  fill: none;
+  stroke: #e7ff8c;                /* default; set per-rod from JS */
+  stroke-width: 2.4; stroke-linecap: round;
+  filter: drop-shadow(0 0 1.6px rgba(0,0,0,0.55));
+}
+/* fly-end marker — style depends on the rig (set via class in JS) */
+#fly-dot { filter: drop-shadow(0 0 3px rgba(0,0,0,0.45)); }
+/* nymph → bright strike indicator */
+#fly-dot.ind  { fill: #ff7e3a; stroke: #7a2c10; stroke-width: 1.2; }
+/* dry → a fuzzy fly seen from a distance */
+#fly-dot.fly  { fill: #b7a17e; stroke: none; filter: blur(1.4px); opacity: 0.85; }
+/* hopper → a neon spec of foam */
+#fly-dot.foam { fill: #dcff45; stroke: #a4e000; stroke-width: 1; filter: drop-shadow(0 0 5px rgba(190,255,60,0.95)); }
 
 #foreground {
   position: absolute; inset: 0;
@@ -82,28 +109,36 @@ button { font-family: var(--font-display); cursor: pointer; }
   object-fit: contain;
   object-position: center bottom;
   pointer-events: none;
+  z-index: 4;        /* angler/rod sits above the fly line (which is z-index 2) */
 }
 
-#background.light-low    { filter: brightness(0.62) saturate(0.85) hue-rotate(-8deg); }
-#background.light-soft   { filter: brightness(0.92) saturate(0.95); }
-#background.light-bright { filter: brightness(1.08) saturate(1.05); }
+/* cast-line: the baked cast line, re-colored per rod. A solid fill masked by the
+   per-frame line shape (line_cast_N.png), so it follows the cast art exactly. */
+#cast-line {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  z-index: 3; pointer-events: none; display: none;   /* behind the angler (z-index 4) */
+  background: #e7ff8c;            /* set per-rod from JS */
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;   mask-size: 100% 100%;
+  -webkit-mask-position: center;  mask-position: center;
+  mask-mode: alpha;
+  filter: drop-shadow(0 0 1.6px rgba(0,0,0,0.5));
+}
+#cast-line.show { display: block; }
 
+#background.light-low,    #background2.light-low    { filter: brightness(0.62) saturate(0.85) hue-rotate(-8deg); }
+#background.light-soft,   #background2.light-soft   { filter: brightness(0.92) saturate(0.95); }
+#background.light-bright, #background2.light-bright { filter: brightness(1.08) saturate(1.05); }
+
+/* the drift pan/bob is driven in JS (per-frame transform); only the bite shake is CSS */
 #foreground.shake  { animation: shake 0.28s infinite; }
-#foreground.bob    { animation: bob 2.4s ease-in-out infinite alternate; }
-#foreground.rotate-in { animation: rotateIn 0.9s ease-out forwards; }
 
 @keyframes shake {
   0%,100% { transform: translate(0,0) rotate(0deg) scale(1.06); }
   25% { transform: translate(-6px,5px) rotate(-2deg) scale(1.06); }
   50% { transform: translate(6px,-5px) rotate(2deg) scale(1.06); }
   75% { transform: translate(-5px,-5px) rotate(-1deg) scale(1.06); }
-}
-@keyframes bob {
-  0% { transform: translateY(0); } 100% { transform: translateY(7px); }
-}
-@keyframes rotateIn {
-  0% { transform: perspective(900px) rotateY(-26deg) scale(1.06); opacity: 0.6; }
-  100% { transform: perspective(900px) rotateY(0deg) scale(1.0); opacity: 1; }
 }
 
 /* ---------------- Stage overlay corners ---------------- */
@@ -475,6 +510,8 @@ button { font-family: var(--font-display); cursor: pointer; }
   .btn { font-size: 16px; padding: 14px 28px; }
   .btn-cast { font-size: 20px; padding: 14px 36px; }
   .btn-set { font-size: 22px; padding: 14px 36px; }
+  /* REEL IN is a secondary action — keep it smaller than MEND */
+  .btn-ghost { font-size: 13px; padding: 9px 16px; }
 
   /* fight bar takes more width on mobile */
   #tension-wrap { width: 90vw; max-width: 90vw; }

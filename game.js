@@ -7,20 +7,40 @@
 const A = DATA;
 const $ = (id) => document.getElementById(id);
 
-// ---------------- asset paths ----------------
-const IMG = {
-  castBg: 'assets/cast_bg.png',
-  cast: ['assets/cast_1.png', 'assets/cast_2.png', 'assets/cast_3.png', 'assets/cast_4.png'],
-  driftBg: ['assets/drift_bg_a.png', 'assets/drift_bg_b.png'],
-  drift: 'assets/drift.png',
-  mend: 'assets/mend.png',
-  set: 'assets/set.png',
-  strip: 'assets/strip.png',
-  pulled: 'assets/pulled.png',
-};
+// ---------------- locations & asset paths ----------------
+let LOC_ID = localStorage.getItem('bl_location') || A.LOCATION_ORDER[0];
+if (!A.LOCATIONS[LOC_ID]) LOC_ID = A.LOCATION_ORDER[0];
+let LOC = A.LOCATIONS[LOC_ID];
+
+// The cast animation (angler + rod + line mask) is the same first-person action in
+// every location, so it lives in one shared folder rather than being duplicated.
+const CAST_DIR = 'assets/cast';
+const CAST_FRAMES = 4;
+
+// resolve every scene asset for a location from its manifest (counts → file names)
+function buildPaths(loc) {
+  const d = loc.dir;
+  return {
+    castBg:  `${d}/bg_cast.png`,
+    driftBg: Array.from({ length: loc.driftFrames }, (_, i) => `${d}/bg_drift_${i}.png`),
+    cast:    Array.from({ length: CAST_FRAMES }, (_, i) => `${CAST_DIR}/fg_cast_${i}.png`),
+    castLine: Array.from({ length: CAST_FRAMES }, (_, i) => `${CAST_DIR}/line_cast_${i}.png`),
+    drift:   `${d}/fg_drift.png`,
+    mend:    `${d}/fg_mend.png`,
+    set:     `${d}/fg_set.png`,
+    pulled:  `${d}/fg_pulled.png`,
+  };
+}
+let IMG = buildPaths(LOC);
+
+const FISH_IMGS = A.SPECIES_ORDER.map(id => A.SPECIES[id].img);
+// flat list of one location's scene images, for preloading
+const locImageList = (img) => [img.castBg, ...img.driftBg, ...img.cast, ...img.castLine, img.drift, img.mend, img.set, img.pulled];
 
 // ---------------- DOM ----------------
-const bg = $('background'), fg = $('foreground');
+const bg = $('background'), bg2 = $('background2'), fg = $('foreground');
+const castLineEl = $('cast-line');
+const flyLine = $('fly-line'), flyPath = $('fly-line-path'), flyDot = $('fly-dot');
 const castBtn = $('cast-btn'), mendBtn = $('mend-btn'), setBtn = $('set-btn'), reelBtn = $('reel-in-btn');
 const driftMini = $('drift-mini'), driftMiniFill = $('drift-mini-fill'), driftMiniVal = $('drift-mini-val');
 const takePrompt = $('take-prompt');
@@ -62,6 +82,145 @@ function loadJournal() {
 function saveJournal() { localStorage.setItem(LSK, JSON.stringify(journal)); }
 
 // =========================================================
+//  ASSETS — preload (decode before use) + background crossfade
+//  Decoding images before they're shown is what kills the
+//  "pop-in" flashes; once decoded, swapping an <img> src is instant.
+// =========================================================
+const imgCache = new Map();   // src -> Promise that resolves once decoded/loaded
+function preload(paths) {
+  return Promise.all(paths.map(src => {
+    if (imgCache.has(src)) return imgCache.get(src);
+    const img = new Image();
+    img.src = src;
+    const p = (img.decode ? img.decode() : Promise.reject())
+      .catch(() => new Promise(res => { img.onload = img.onerror = res; }));
+    imgCache.set(src, p);
+    return p;
+  }));
+}
+
+// two stacked <img> layers; fade the back one in, then swap roles
+let bgFront = bg, bgBack = bg2;
+function applyLight(el) {
+  el.classList.remove('light-low', 'light-soft', 'light-bright');
+  el.classList.add('light-' + cond.light);
+}
+function setBackground(src, fade) {
+  if (fade === false) {
+    bgFront.src = src; applyLight(bgFront);
+    bgBack.style.opacity = '0';
+    return;
+  }
+  bgBack.src = src;
+  applyLight(bgBack);
+  bgBack.style.opacity = '1';
+  bgFront.style.opacity = '0';
+  const t = bgFront; bgFront = bgBack; bgBack = t;
+}
+
+// =========================================================
+//  DYNAMIC FLY LINE — drawn from rod tip to the fly on the water
+//  · The rod-tip anchor is mapped through the foreground's LIVE transform
+//    (pan / bob / bite shake) so the line stays glued to the tip.
+//  · During the drift the fly travels upstream→downstream and the line
+//    bellies more as drag builds, snapping taut on a take.
+//  · The fly-end marker depends on the rig (indicator / dry fly / foam).
+// =========================================================
+const lerp = (a, b, t) => a + (b - a) * t;
+const SW_STAGE = 1472, SH_STAGE = 704;
+
+let lineAnchors = null;   // current LOC.line[state] entry
+let lineRAF = null;
+let lineJerk = 0;         // 0..1 transient that pulls the line taut on a strike
+let mendBow = 0;          // 0..1 transient that flips the line's arc upstream after a mend
+
+// Single source of truth for the foreground's transform. Both the <img> and the
+// fly-line rod-tip are derived from these, so the line can never lag/detach from
+// the tip (no getComputedStyle round-trip, no cross-RAF timing gap).
+let fgX = 0, fgY = 0, fgRot = 0, fgScale = 1;
+function applyFgTransform() {
+  fg.style.transform = `translate(${fgX.toFixed(1)}px, ${fgY.toFixed(1)}px) rotate(${fgRot.toFixed(2)}deg) scale(${fgScale})`;
+}
+function resetFgTransform() { fgX = 0; fgY = 0; fgRot = 0; fgScale = 1; fg.style.transform = ''; }
+
+// rod-tip in stage px after the foreground's transform (origin = center)
+function fgTipPoint(rod) {
+  const ox = SW_STAGE / 2, oy = SH_STAGE / 2;
+  const r = fgRot * Math.PI / 180, c = Math.cos(r), sn = Math.sin(r);
+  const dx = (rod[0] * SW_STAGE - ox) * fgScale, dy = (rod[1] * SH_STAGE - oy) * fgScale;
+  return [ox + dx * c - dy * sn + fgX, oy + dx * sn + dy * c + fgY];
+}
+
+// which fly-end marker the current rig shows
+function flyMarkerKind() {
+  if (tackle.rigId === 'hopper_dropper') return 'foam';        // neon spec of foam
+  const rig = A.RIGS[tackle.rigId];
+  if (rig.slots.every(s => s === 'drop')) return 'ind';        // nymph → strike indicator
+  return 'fly';                                                // dry → fuzzy distant fly
+}
+function updateFlyMarker() {
+  const k = flyMarkerKind();
+  flyDot.setAttribute('class', k);
+  flyDot.setAttribute('r', k === 'foam' ? 5.5 : k === 'fly' ? 5.5 : 4.5);
+}
+
+function updateLineColor() {
+  flyPath.style.stroke = (A.RODS[tackle.rodId] && A.RODS[tackle.rodId].lineColor) || '#e7ff8c';
+}
+
+function showFlyLine(which) {
+  lineAnchors = (LOC.line && (LOC.line[which] || LOC.line.drift)) || null;
+  if (!lineAnchors) { hideFlyLine(); return; }
+  updateFlyMarker();
+  updateLineColor();
+  flyLine.classList.add('show');
+  if (lineRAF == null) lineRAF = requestAnimationFrame(drawFlyLine);
+}
+function hideFlyLine() {
+  flyLine.classList.remove('show');
+  if (lineRAF != null) { cancelAnimationFrame(lineRAF); lineRAF = null; }
+}
+function drawFlyLine(now) {
+  if (!lineAnchors || !flyLine.classList.contains('show')) { lineRAF = null; return; }
+  const t = now / 1000;
+  const drifting = (state === ST.DRIFT || state === ST.BITE);
+
+  // fly position: during the drift it slides upstream→downstream with the segment.
+  // Driven from the drift anchors even while the mend pose is showing, so a mend
+  // visibly throws the fly back upstream.
+  const dl = LOC.line && LOC.line.drift;
+  let flyN;
+  if (drifting && dl && dl.flyUp && dl.flyDown) {
+    const s = Math.max(0, Math.min(1, driftProgress));   // lure floats downstream (carries thru bg cuts)
+    flyN = [lerp(dl.flyUp[0], dl.flyDown[0], s), lerp(dl.flyUp[1], dl.flyDown[1], s)];
+  } else {
+    flyN = lineAnchors.fly || (dl && dl.flyUp) || [0.3, 0.92];
+  }
+
+  const [rx, ry] = fgTipPoint(lineAnchors.rod);
+  const fxp = flyN[0] * SW_STAGE, fyp = flyN[1] * SH_STAGE;
+  const dq = drifting ? driftQuality : 100;
+
+  // The arc of the line reflects drag: it bellies DOWNSTREAM (−x here) and grows as the
+  // drift degrades. A mend flips that belly UPSTREAM, then it relaxes back as drag rebuilds.
+  const baseMag = (lineAnchors.sag || 0.06) * SH_STAGE;
+  const dragBow = (100 - dq) / 100;                       // 0 = clean drift, 1 = blown out
+  let lateral = -(0.35 + dragBow * 1.9) * baseMag;        // downstream belly
+  if (mendBow > 0) {
+    lateral = lerp(lateral, 1.6 * baseMag, mendBow);      // mend throws the arc upstream
+    mendBow = Math.max(0, mendBow - 0.012);
+  }
+  if (lineJerk > 0) { lateral *= (1 - 0.85 * lineJerk); lineJerk = Math.max(0, lineJerk - 0.045); }
+  const sway = Math.sin(t * 1.6) * 4 + Math.sin(t * 0.7) * 2;
+  const mx = (rx + fxp) / 2 + lateral + sway;             // control point: lateral arc
+  const my = (ry + fyp) / 2 + baseMag * 0.5;              // slight gravity sag
+  flyPath.setAttribute('d', `M ${rx.toFixed(1)} ${ry.toFixed(1)} Q ${mx.toFixed(1)} ${my.toFixed(1)} ${fxp.toFixed(1)} ${fyp.toFixed(1)}`);
+  flyDot.setAttribute('cx', fxp.toFixed(1));
+  flyDot.setAttribute('cy', (fyp + Math.sin(t * 1.6) * 2).toFixed(1));
+  lineRAF = requestAnimationFrame(drawFlyLine);
+}
+
+// =========================================================
 //  CONDITIONS ENGINE
 // =========================================================
 function rollWater() {
@@ -83,8 +242,8 @@ function advancePhase() {
   applyPhase();
 }
 function paintLight() {
-  bg.classList.remove('light-low', 'light-soft', 'light-bright');
-  bg.classList.add('light-' + cond.light);
+  applyLight(bgFront);
+  applyLight(bgBack);
 }
 
 // =========================================================
@@ -210,7 +369,7 @@ function renderRods() {
     b.innerHTML = `<div class="o-row"><span class="o-name">${r.name}</span>
       <span class="o-meta">${r.line} · ${r.action}</span></div>
       <div class="o-note">${r.blurb}</div>`;
-    b.onclick = () => { tackle.rodId = id; AUDIO.play('strip'); renderRods(); renderMatch(); };
+    b.onclick = () => { tackle.rodId = id; AUDIO.play('strip'); updateLineColor(); renderRods(); renderMatch(); };
     wrap.appendChild(b);
   });
 }
@@ -243,6 +402,7 @@ function setRig(id) {
   tackle.rigId = id;
   tackle.slots = newSlots;
   AUDIO.play('strip');
+  updateFlyMarker();              // indicator / dry fly / foam depends on the rig
   renderRigs(); renderSlots(); renderMatch();
 }
 
@@ -302,15 +462,33 @@ function closePicker() { $('fly-picker').classList.remove('open'); }
 // =========================================================
 //  SCALING
 // =========================================================
+const SW = 1472, SH = 704;
 function resize() {
   const wrap = $('stage-wrap');
   const ww = wrap.clientWidth, wh = wrap.clientHeight;
-  const sc = (window.innerWidth < 768 && wh > ww)
-    ? wh / 704                           // portrait mobile: fill height
-    : Math.min(ww / 1472, wh / 704);    // landscape / desktop: fit
-  $('game-container').style.transform = `scale(${sc})`;
+  let scale, tx = 0, ty = 0;
+  if (window.innerWidth < 768 && wh > ww) {
+    // portrait mobile: COVER the screen (no letterbox) and frame on the angler
+    // so the fisherman/fly stay large instead of shrinking into a wide strip.
+    scale = Math.max(ww / SW, wh / SH);
+    const sw = SW * scale, sh = SH * scale;
+    const fx = LOC.focalX != null ? LOC.focalX : 0.5;
+    const fy = LOC.focalY != null ? LOC.focalY : 0.5;
+    tx = (0.5 - fx) * sw;
+    ty = (0.5 - fy) * sh;
+    const maxX = Math.max(0, (sw - ww) / 2), maxY = Math.max(0, (sh - wh) / 2);
+    tx = Math.max(-maxX, Math.min(maxX, tx));
+    ty = Math.max(-maxY, Math.min(maxY, ty));
+  } else {
+    // landscape / desktop: CONTAIN (fit the whole scene)
+    scale = Math.min(ww / SW, wh / SH);
+  }
+  $('game-container').style.transform = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) scale(${scale})`;
 }
 window.addEventListener('resize', resize);
+// orientationchange fires before the viewport settles on mobile — re-frame a few times
+window.addEventListener('orientationchange', () => { resize(); setTimeout(resize, 180); setTimeout(resize, 450); });
+if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
 
 // =========================================================
 //  PANEL TOGGLE
@@ -360,9 +538,14 @@ function setControls({ cast = false, mend = false, set = false, reel = false }) 
 function toIdle() {
   state = ST.IDLE;
   stopDrift();
-  bg.src = IMG.castBg; paintLight();
+  stopDriftFrames();
+  hideFlyLine();
+  castLineEl.classList.remove('show');
+  bg.style.display = ''; bg2.style.display = '';
+  setBackground(IMG.castBg, true); paintLight();
   fg.style.display = 'none';
   fg.className = '';
+  resetFgTransform();
   driftMini.classList.add('hidden');
   takePrompt.classList.add('hidden');
   reveal.classList.add('hidden');
@@ -376,29 +559,102 @@ function startCast() {
   if (!e.ready) { flashNote('Tie on a fly first.'); return; }
   state = ST.CASTING;
   setControls({});
+  hideFlyLine();
   AUDIO.play('cast');
   fg.style.display = 'block';
   fg.className = '';
+  resetFgTransform();             // cast frames are full-frame; no drift pan
+  // cast line: re-colored to the rod, masked by the per-frame baked line shape
+  castLineEl.style.background = (A.RODS[tackle.rodId] && A.RODS[tackle.rodId].lineColor) || '#e7ff8c';
+  castLineEl.classList.add('show');
   const cadence = A.RODS[tackle.rodId].cadence;
   let i = 0;
   (function frame() {
+    if (state !== ST.CASTING) return;
     if (i >= IMG.cast.length) { AUDIO.play('splash'); startDrift(); return; }
     fg.src = IMG.cast[i];
+    const mask = `url("${IMG.castLine[i]}")`;
+    castLineEl.style.webkitMaskImage = mask;
+    castLineEl.style.maskImage = mask;
     const d = cadence[i] || 110;
     i++;
     setTimeout(frame, d);
   })();
 }
 
+// ---- drift motion (fakes a continuous downstream drift from N still frames) ----
+// Each "segment" the foreground angler pans across the held background while the
+// fly drifts downstream and drag builds; at the end of a segment the background
+// HARD-CUTS to the next frame (no crossfade) and the angler snaps back to the
+// start — the cut hides the reset, so it reads as drifting to a fresh stretch.
+// NOTE: panSeg only drives the cosmetic angler pan + bg cuts. The actual drag and
+// the fly's drifted position are tied to driftQuality (continuous), so they carry
+// straight through a bg-frame cut instead of resetting with the scenery.
+let driftFrameIdx = 0, panSeg = 0, driftProgress = 0;
+const PAN_X = 30;             // per-frame cosmetic pan, half-amplitude in stage px
+const ROD_FOLLOW = 70;        // how far (stage px) the rod tip chases the lure downstream
+const FG_DRIFT_SCALE = 1.15;  // zoom so the panned/followed/bobbed arm edges stay off-frame
+// foreground X = per-frame cosmetic pan + a follow that tracks the drifting lure
+const driftFgX = () => (1 - panSeg * 2) * PAN_X - driftProgress * ROD_FOLLOW;
+
+function startDriftFrames() {
+  driftFrameIdx = 0; panSeg = 0;
+  setBackground(IMG.driftBg[0], false);   // hard cut — no transition between bg frames
+  paintLight();
+}
+function tickDrift(dt, now) {
+  // the lure floats steadily downstream — continuous, and carries straight through bg cuts
+  driftProgress = Math.min(1, driftProgress + dt * 1000 / (LOC.driftTravelMs || 12000));
+  // angler pan + bg frame cuts — cosmetic only; they never touch the drag/lure state
+  const segSec = (LOC.driftFrameMs || 6500) / 1000;
+  if (driftFrameIdx < IMG.driftBg.length - 1) {
+    panSeg += dt / segSec;
+    if (panSeg >= 1) {
+      driftFrameIdx++;
+      setBackground(IMG.driftBg[driftFrameIdx], false);          // hard cut to next still
+      paintLight();
+      panSeg = 0;                          // angler snaps back for the fresh stretch
+    }
+  } else {
+    panSeg = Math.min(1, panSeg + dt / segSec);                  // last frame: pan to the end, hold
+  }
+  fgX = driftFgX();
+  fgY = Math.sin(now / 900) * 4;
+  fgRot = 0; fgScale = FG_DRIFT_SCALE;
+  applyFgTransform();
+}
+function stopDriftFrames() { driftFrameIdx = 0; panSeg = 0; }
+
+// bite shake — driven in JS so it composes onto the frozen drift pan (no position pop),
+// and the fly line stays glued to the rod tip (fgTipPoint reads this same transform).
+let biteShakeRAF = null;
+function startBiteShake() {
+  stopBiteShake();
+  const panX = driftFgX();                    // freeze the pan+follow where the take happened
+  const t0 = performance.now();
+  (function sh(now) {
+    if (state !== ST.BITE) { biteShakeRAF = null; return; }
+    const e = now - t0;
+    const k = Math.max(0.15, 1 - e / 1200);  // ease the jitter down but keep a tremor
+    fgX = panX + Math.sin(e / 21) * 8 * k;
+    fgY = Math.cos(e / 17) * 6 * k;
+    fgRot = Math.sin(e / 27) * 2 * k;
+    fgScale = FG_DRIFT_SCALE;
+    applyFgTransform();
+    biteShakeRAF = requestAnimationFrame(sh);
+  })(t0);
+}
+function stopBiteShake() { if (biteShakeRAF != null) { cancelAnimationFrame(biteShakeRAF); biteShakeRAF = null; } }
+
 function startDrift() {
   state = ST.DRIFT;
-  // pick a drift background, tinted by light
-  bg.src = IMG.driftBg[Math.random() < 0.5 ? 0 : 1];
-  paintLight();
+  driftProgress = 0;                     // lure starts at the upstream landing spot
+  startDriftFrames();
+  castLineEl.classList.remove('show');   // baked cast line done; dynamic line takes over
   fg.src = IMG.drift;
   fg.classList.remove('shake');
-  fg.classList.add('rotate-in');
-  setTimeout(() => { if (state === ST.DRIFT) { fg.classList.remove('rotate-in'); fg.classList.add('bob'); } }, 850);
+  fgX = driftFgX(); fgY = 0; fgRot = 0; fgScale = FG_DRIFT_SCALE; applyFgTransform();
+  showFlyLine('drift');
 
   driftQuality = 100;
   dragFreeUntil = 0;
@@ -425,6 +681,9 @@ function startDriftLoop() {
     const decayRate = rig.driftDecay * 9 / water.dragHide;   // %/sec
     driftQuality = Math.max(0, driftQuality - decayRate * dt);
     updateDriftHud();
+
+    // pan the angler downstream + cut bg frames as the fly drifts
+    tickDrift(dt, now);
 
     // mend readiness cue
     const canMend = now > mendCoolUntil;
@@ -460,13 +719,14 @@ function rollBite(now) {
   if (!e.ready || e.biteMul <= 0) return;
   const driftFactor = 0.22 + 0.78 * (driftQuality / 100);
   const dragFree = now < dragFreeUntil ? 1.5 : 1;
-  const BASE = 0.17;
+  const BASE = 0.115;
   let p = BASE * e.biteMul * driftFactor * pity * dragFree;
-  p = Math.min(0.6, p);
+  if (driftProgress > 0.9) p *= 0.3;  // lure has drifted out of the zone — fish rarely chase it
+  p = Math.min(0.45, p);
   if (Math.random() < p) {
     triggerBite(e);
   } else {
-    pity = Math.min(2.3, pity + 0.12);   // pity timer — not flat coinflips
+    pity = Math.min(2.1, pity + 0.09);   // pity timer — not flat coinflips
   }
 }
 
@@ -532,9 +792,10 @@ function triggerBite(e) {
   bite = { speciesId, sizeIn, win, deadline: performance.now() + win,
            trophy: sizeIn >= A.SPECIES[speciesId].trophy };
 
-  fg.classList.remove('bob', 'rotate-in');
-  fg.src = IMG.drift; void fg.offsetWidth;
-  fg.classList.add('shake');
+  fg.src = IMG.drift;
+  showFlyLine('drift');                    // match the line to the drift pose (fixes mid-mend takes)
+  startBiteShake();                        // JS shake, composed onto the frozen pan
+  lineJerk = 1;                            // line snaps taut on the take
   takePrompt.classList.add('hidden');     // SET button is the cue
   driftMini.classList.add('hidden');
   setControls({ set: true });
@@ -548,7 +809,9 @@ function triggerBite(e) {
 function doSet() {
   if (state !== ST.BITE) return;
   clearTimeout(biteFlash);
-  fg.classList.remove('shake');
+  stopBiteShake();
+  resetFgTransform();             // clear the drift pan for the set close-up
+  hideFlyLine();
   fg.src = IMG.set;
   AUDIO.play('set');
   setControls({});
@@ -557,8 +820,9 @@ function doSet() {
 
 function missBite() {
   state = ST.DRIFT;
-  fg.classList.remove('shake');
-  fg.src = IMG.drift; fg.classList.add('bob');
+  stopBiteShake();
+  fg.src = IMG.drift;             // drift loop resumes the pan/bob via tickDrift
+  showFlyLine('drift');
   AUDIO.play('fail');
   bite = null;
   flashNote('Missed the take.');
@@ -566,7 +830,7 @@ function missBite() {
   setControls({ mend: true, reel: true });
   pity = Math.min(2.3, pity + 0.2);
   lastBiteTick = performance.now();
-  startDriftLoop();
+  startDriftLoop();              // resumes; drift-frame progression continues from where it paused
 }
 
 // =========================================================
@@ -634,7 +898,6 @@ function doStrip() {
     }
     fight.got = Math.max(0, fight.got - 1);
     placeZone();
-    flashNote('Slack! Keep tight.');
   }
 }
 
@@ -667,8 +930,8 @@ function landFish() {
   // flavor by size class
   let cls = inches >= s.trophy ? 'trophy' : inches >= (s.size[1]+s.size[2])/2 ? 'big' : inches >= s.size[1] ? 'mid' : 'small';
   const lines = A.CATCH_LINES[cls];
-  revFlavor.textContent = lines[Math.floor(Math.random() * lines.length)] + ' ' + s.blurb;
-  releaseBtn.textContent = 'RELEASE & CAST';
+  revFlavor.textContent = lines[Math.floor(Math.random() * lines.length)];
+  releaseBtn.textContent = 'RELEASE';
   reveal.classList.remove('hidden');
   reveal.classList.add('fade-in');
   AUDIO.play(isRecord ? 'record' : 'catch');
@@ -685,12 +948,12 @@ function loseFish(dramatic) {
   AUDIO.play('fail');
   if (dramatic) {
     // the big one pulls you off the rock — stays in-game, no redirect
-    bg.style.display = 'none';
+    bg.style.display = 'none'; bg2.style.display = 'none';
     fg.style.display = 'block';
     fg.src = IMG.pulled; void fg.offsetWidth;
     fg.classList.add('shake');
     setTimeout(() => {
-      fg.classList.remove('shake'); bg.style.display = '';
+      fg.classList.remove('shake'); bg.style.display = ''; bg2.style.display = '';
       showLost('It bulldogged for the logjam and broke you off.', 'SNAP!');
     }, 1300);
   } else {
@@ -740,11 +1003,14 @@ function doMend() {
   if (timing >= 0.85) dragFreeUntil = now + 3000;
   mendCoolUntil = now + 2200;
 
-  // visual: flick the line with the mend frame
+  // visual: flick the line with the mend frame. The main effect is the ARC flipping
+  // upstream (mendBow); the lure itself only repositions a touch.
   AUDIO.play('mend');
-  fg.classList.remove('bob');
   fg.src = IMG.mend;
-  setTimeout(() => { if (state === ST.DRIFT) { fg.src = IMG.drift; fg.classList.add('bob'); } }, 420);
+  showFlyLine('mend');
+  mendBow = 0.5 + 0.5 * timing;                      // flip the line's arc upstream
+  driftProgress = Math.max(0, driftProgress - 0.08); // lure slides back upstream just a little
+  setTimeout(() => { if (state === ST.DRIFT) { fg.src = IMG.drift; showFlyLine('drift'); } }, 420);
 }
 
 // =========================================================
@@ -783,6 +1049,36 @@ function renderJournal() {
       </div>`;
     list.appendChild(row);
   });
+}
+
+// =========================================================
+//  LOCATIONS — selector (hidden unless there's more than one)
+// =========================================================
+function renderLocations() {
+  const sec = $('loc-section'), wrap = $('loc-list');
+  if (A.LOCATION_ORDER.length <= 1) { sec.classList.add('hidden'); return; }
+  sec.classList.remove('hidden');
+  wrap.innerHTML = '';
+  A.LOCATION_ORDER.forEach(id => {
+    const l = A.LOCATIONS[id];
+    const b = document.createElement('button');
+    b.className = 'opt' + (LOC_ID === id ? ' sel' : '');
+    b.innerHTML = `<div class="o-row"><span class="o-name">${l.name}</span></div>
+      ${l.blurb ? `<div class="o-note">${l.blurb}</div>` : ''}`;
+    b.onclick = () => setLocation(id);
+    wrap.appendChild(b);
+  });
+}
+
+async function setLocation(id) {
+  if (!A.LOCATIONS[id] || id === LOC_ID) return;
+  LOC_ID = id; LOC = A.LOCATIONS[id]; IMG = buildPaths(LOC);
+  localStorage.setItem('bl_location', id);
+  AUDIO.play('strip');
+  await preload(locImageList(IMG));      // have the new scene decoded before showing it
+  renderLocations();
+  toIdle();                              // reset the scene to the new location
+  resize();
 }
 
 // =========================================================
@@ -834,15 +1130,15 @@ function hideAudioNudge() { const n = $('audio-nudge'); if (n) n.style.display =
 // =========================================================
 //  INIT
 // =========================================================
-function init() {
+async function init() {
   // start at a random time of day, weighted toward fishy hours
   cond.phaseIdx = [0, 1, 4, 5, 1, 4][Math.floor(Math.random() * 6)];
   rollWater();
   applyPhase();
 
   renderRods(); renderRigs(); renderSlots(); renderMatch(); renderJournal();
-  resize();
-  toIdle();
+  renderLocations();
+  updateFlyMarker(); updateLineColor();
 
   // audio default: muted unless user previously turned it on
   const pref = localStorage.getItem('bl_muted');
@@ -850,11 +1146,12 @@ function init() {
   reflectMute();
   if (pref === '0') hideAudioNudge();
 
+  // decode the active scene + fish before first paint → no pop-in flashes
+  await preload(locImageList(IMG).concat(FISH_IMGS));
+  resize();
+  toIdle();
+
   // advance the day on a slow timer
   setInterval(() => { if (state === ST.IDLE || state === ST.DRIFT) advancePhase(); }, 78000);
-
-  // preload frames
-  [...IMG.cast, IMG.drift, IMG.mend, IMG.set, IMG.strip, IMG.pulled, ...IMG.driftBg, IMG.castBg].forEach(s => { const i = new Image(); i.src = s; });
 }
-bg.addEventListener('load', resize, { once: true });
 init();
