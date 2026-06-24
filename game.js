@@ -1139,12 +1139,6 @@ function flashNote(msg) {
 //  JOURNAL
 // =========================================================
 function renderJournal() {
-  const sum = $('jr-summary');
-  const caught = Object.values(journal.species).filter(s => s.caught).length;
-  sum.innerHTML = `
-    <div class="row"><span class="k">SPECIES LANDED</span><span class="v">${caught} / ${A.SPECIES_ORDER.length}</span></div>
-    <div class="row"><span class="k">FISH LANDED</span><span class="v">${journal.landed}</span></div>
-    <div class="row"><span class="k">PERSONAL BEST</span><span class="v gold">${journal.best ? journal.best.toFixed(1) + '"' : '—'}</span></div>`;
   const list = $('journal-list'); list.innerHTML = '';
   A.SPECIES_ORDER.forEach(id => {
     const s = A.SPECIES[id], rec = journal.species[id];

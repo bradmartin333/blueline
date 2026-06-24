@@ -519,12 +519,6 @@ details.sec > summary.sec-label:hover { color: var(--ink); }
 .jr-name { font-family: var(--font-display); font-weight: 700; font-size: 16px; }
 .jr-name.locked { color: var(--ink-faint); font-style: italic; font-weight: 400; }
 .jr-stats { font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); margin-top: 3px; letter-spacing: 0.03em; }
-
-.jr-summary { background: var(--ink); color: var(--paper); border-radius: 5px; padding: 13px 14px; margin-bottom: 6px; }
-.jr-summary .row { display: flex; justify-content: space-between; padding: 4px 0; font-family: var(--font-mono); font-size: 12.5px; }
-.jr-summary .row .k { color: var(--ink-faint); letter-spacing: 0.1em; }
-.jr-summary .row .v { font-family: var(--font-display); font-weight: 700; }
-.jr-summary .row .v.gold { color: var(--gold); }
 .jr-record { text-align: center; font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); margin-top: 14px; letter-spacing: 0.08em; }
 
 .panel-credit { text-align: center; font-family: var(--font-mono); font-size: 10px; color: var(--ink-faint); padding: 8px 12px 10px; letter-spacing: 0.06em; }
