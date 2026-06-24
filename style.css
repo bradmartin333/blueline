@@ -131,6 +131,38 @@ button { font-family: var(--font-display); cursor: pointer; }
 #background.light-soft,   #background2.light-soft   { filter: brightness(0.92) saturate(0.95); }
 #background.light-bright, #background2.light-bright { filter: brightness(1.08) saturate(1.05); }
 
+/* ---------------- Scene color-grade (time-of-day mood wash) ---------------- */
+/* A soft tinted gradient over the backgrounds (under the fly line + angler) that
+   shifts with the phase: cool blue at dawn, warm gold toward dusk. */
+#scene-grade {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  mix-blend-mode: soft-light; opacity: 0;
+  transition: opacity 1.4s ease, background 1.4s ease;
+}
+#scene-grade.grade-dawn      { opacity: .85; background: linear-gradient(180deg, #2a4a8c 0%, #4a5a8a 55%, #6a5a7a 100%); }
+#scene-grade.grade-morning   { opacity: .45; background: linear-gradient(180deg, #cfe0ff 0%, #e8eecf 100%); }
+#scene-grade.grade-midday    { opacity: .25; background: linear-gradient(180deg, #fff6d8 0%, #eef3ff 100%); }
+#scene-grade.grade-afternoon { opacity: .4;  background: linear-gradient(180deg, #ffe9b0 0%, #ffd98f 100%); }
+#scene-grade.grade-evening   { opacity: .7;  background: linear-gradient(180deg, #ffb95e 0%, #ff8a52 60%, #b5512a 100%); }
+#scene-grade.grade-dusk      { opacity: .8;  background: linear-gradient(180deg, #5a4a8c 0%, #b5512a 55%, #3a2a4a 100%); }
+
+/* ---------------- Living river — ambient life ---------------- */
+#ambient { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+
+/* a rise ring dimpling the surface */
+.rise {
+  position: absolute; width: 26px; height: 12px; margin: -6px 0 0 -13px;
+  border: 2px solid rgba(245,250,255,0.7); border-radius: 50%;
+  transform: scale(calc(var(--rs, 1) * 0.2)); opacity: 0;
+  animation: riseRing 2s ease-out forwards;
+}
+.rise-splash { border-color: rgba(255,255,255,0.92); border-width: 2.5px; }
+@keyframes riseRing {
+  0%   { transform: scale(calc(var(--rs,1) * 0.15)); opacity: 0; }
+  12%  { opacity: 0.9; }
+  100% { transform: scale(calc(var(--rs,1) * 2.4)); opacity: 0; }
+}
+
 /* the drift pan/bob is driven in JS (per-frame transform); only the bite shake is CSS */
 #foreground.shake  { animation: shake 0.28s infinite; }
 
@@ -569,3 +601,75 @@ details.sec > summary.sec-label:hover { color: var(--ink); }
   .btn-set { font-size: 18px; padding: 12px 28px; }
   #reveal .species { font-size: 28px; }
 }
+
+/* ---------------- Legendary reveal ---------------- */
+#reveal.legend { background: radial-gradient(120% 90% at 50% 42%, rgba(60,46,16,0.9), rgba(13,11,7,0.92)); }
+#reveal.legend .ribbon {
+  background: linear-gradient(180deg, #f3c64e, #c1922f); color: #2a2008;
+  box-shadow: 0 0 28px rgba(241,200,80,0.6), 0 4px 0 #8a6620;
+  animation: legendPulse 1.6s ease-in-out infinite;
+}
+#reveal.legend .species { color: #ffe9a8; text-shadow: 0 0 22px rgba(255,210,90,0.55); }
+#reveal.legend img { filter: drop-shadow(0 0 26px rgba(255,210,90,0.5)) drop-shadow(0 18px 26px rgba(0,0,0,0.6)); }
+@keyframes legendPulse { 0%,100% { transform: rotate(-2deg) scale(1); } 50% { transform: rotate(-2deg) scale(1.05); } }
+
+/* a tougher fight reads gold/tense */
+#fight.legend-fight { background: rgba(40,24,6,0.6); }
+#fight.legend-fight #green-zone { background: rgba(193,146,47,0.4); border-color: var(--gold); }
+
+/* ---------------- Toasts (achievements / events) ---------------- */
+#toasts {
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+  z-index: 70; display: flex; flex-direction: column; gap: 8px; align-items: center;
+  pointer-events: none; width: max-content; max-width: 90%;
+}
+.toast {
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(20,17,11,0.92); color: var(--paper);
+  border: 1px solid rgba(236,226,203,0.25); border-left: 4px solid var(--line);
+  border-radius: 6px; padding: 10px 16px 10px 13px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  opacity: 0; transform: translateY(-14px); transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.toast.in { opacity: 1; transform: translateY(0); }
+.toast.ach    { border-left-color: var(--gold); }
+.toast.legend { border-left-color: var(--gold); background: rgba(40,28,8,0.95); }
+.toast .t-icon { font-size: 26px; line-height: 1; }
+.toast .t-body { display: flex; flex-direction: column; }
+.toast .t-title { font-family: var(--font-display); font-weight: 800; font-size: 15px; letter-spacing: 0.02em; }
+.toast .t-sub { font-family: var(--font-mono); font-size: 12px; color: var(--paper-3); margin-top: 1px; }
+
+/* ---------------- Trophy card modal ---------------- */
+#card-modal { position: absolute; inset: 0; z-index: 85; display: flex; }
+#card-modal.hidden { display: none; }
+.card-scrim { position: absolute; inset: 0; background: rgba(13,11,7,0.8); backdrop-filter: blur(3px); }
+.card-sheet {
+  position: relative; margin: auto; display: flex; flex-direction: column; align-items: center; gap: 14px;
+  padding: 18px; max-width: 92%; max-height: 92%;
+}
+#trophy-canvas {
+  width: auto; height: auto; max-width: min(360px, 78vw); max-height: 68vh;
+  border-radius: 10px; box-shadow: 0 24px 60px rgba(0,0,0,0.6); background: var(--paper);
+}
+.card-actions { display: flex; gap: 12px; }
+
+/* ---------------- Journal: legends + achievements ---------------- */
+.ach-count { font-family: var(--font-mono); font-size: 11px; color: var(--gold); letter-spacing: 0.06em; }
+
+.legend-row { display: flex; gap: 11px; align-items: center; padding: 9px 0; border-bottom: 1px dashed rgba(33,29,20,0.22); }
+.legend-row .legend-mark { font-size: 22px; flex: 0 0 auto; filter: grayscale(1) opacity(0.5); }
+.legend-row.landed .legend-mark { filter: none; }
+.legend-info { min-width: 0; }
+.legend-name { font-family: var(--font-display); font-weight: 700; font-size: 15px; }
+.legend-row:not(.landed) .legend-name { color: var(--ink-faint); font-style: italic; font-weight: 400; }
+.legend-row.landed .legend-name { color: var(--gold); }
+.legend-sub { display: block; font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); margin-top: 2px; line-height: 1.35; }
+
+.ach-badge { display: flex; gap: 11px; align-items: center; padding: 8px 0; border-bottom: 1px dashed rgba(33,29,20,0.18); }
+.ach-badge .ach-icon { font-size: 22px; flex: 0 0 28px; text-align: center; }
+.ach-badge.locked { opacity: 0.55; }
+.ach-badge.locked .ach-icon { filter: grayscale(1); }
+.ach-info { min-width: 0; }
+.ach-name { font-family: var(--font-display); font-weight: 700; font-size: 14px; }
+.ach-badge.locked .ach-name { font-weight: 400; font-style: italic; color: var(--ink-soft); }
+.ach-desc { display: block; font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); margin-top: 1px; }

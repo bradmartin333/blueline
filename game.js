@@ -53,6 +53,8 @@ const reveal = $('reveal'), revRibbon = $('reveal-ribbon'), revSpecies = $('reve
       revInches = $('reveal-inches'), revImg = $('reveal-img'), revFlavor = $('reveal-flavor'),
       releaseBtn = $('release-btn');
 const tackleEl = $('tackle'), tackleToggleBtn = $('tackle-toggle'), panelCloseBtn = $('panel-close');
+const sceneGrade = $('scene-grade'), ambientEl = $('ambient'), toastsEl = $('toasts');
+const cardBtn = $('card-btn'), cardModal = $('card-modal'), trophyCanvas = $('trophy-canvas');
 
 // ---------------- game state ----------------
 const ST = { IDLE: 0, CASTING: 1, DRIFT: 2, BITE: 3, FIGHT: 4, REVEAL: 5 };
@@ -67,20 +69,30 @@ let dragFreeUntil = 0;
 let mendCoolUntil = 0;
 let lastBiteTick = 0;
 let driftRAF = null;
-let bite = null;          // current bite payload {species, sizeIn, setWindow, deadline, trophy}
+let bite = null;          // current bite payload {species, sizeIn, setWindow, deadline, trophy, legend}
 let biteFlash = null;
+
+// --- session tracking (for achievements / streaks) ---
+let catchStreak = 0;          // consecutive lands without losing a hooked fish
+let daySpecies = {};          // species landed since the last dawn (for the day-slam)
+let lastCatch = null;         // snapshot of the most recent landed fish (for the trophy card)
 
 // ---------------- persistence ----------------
 const LSK = 'bl_journal_v1';
 let journal = loadJournal();
 function loadJournal() {
-  try {
-    const j = JSON.parse(localStorage.getItem(LSK));
-    if (j && j.species) return j;
-  } catch (e) {}
-  const fresh = { species: {}, casts: 0, landed: 0, best: 0 };
-  A.SPECIES_ORDER.forEach(id => fresh.species[id] = { caught: false, count: 0, best: 0 });
-  return fresh;
+  let j = null;
+  try { j = JSON.parse(localStorage.getItem(LSK)); } catch (e) {}
+  if (!j || !j.species) {
+    j = { species: {}, casts: 0, landed: 0, best: 0 };
+    A.SPECIES_ORDER.forEach(id => j.species[id] = { caught: false, count: 0, best: 0 });
+  }
+  // migrate / ensure newer fields exist on older saves
+  if (!j.legends) j.legends = {};
+  if (!j.achievements) j.achievements = {};
+  if (!j.seasonsFished) j.seasonsFished = {};
+  A.SPECIES_ORDER.forEach(id => { if (!j.species[id]) j.species[id] = { caught: false, count: 0, best: 0 }; });
+  return j;
 }
 function saveJournal() { localStorage.setItem(LSK, JSON.stringify(journal)); }
 
@@ -243,12 +255,21 @@ function applyPhase() {
 }
 function advancePhase() {
   cond.phaseIdx = (cond.phaseIdx + 1) % A.PHASES.length;
+  if (cond.phaseIdx === 0) daySpecies = {};   // a new dawn → fresh shot at a day-slam
   if (Math.random() < 0.35) rollWater();
   applyPhase();
 }
 function paintLight() {
   applyLight(bgFront);
   applyLight(bgBack);
+  applyGrade();
+}
+// a soft, mood color-grade laid over the whole scene that shifts with time of day:
+// cool blue at dawn, warm gold at evening/dusk, near-neutral midday.
+function applyGrade() {
+  if (!sceneGrade) return;
+  const id = A.PHASES[cond.phaseIdx].id;
+  sceneGrade.className = 'grade-' + id;
 }
 
 // =========================================================
@@ -793,7 +814,16 @@ function triggerBite(e) {
   state = ST.BITE;
   stopDrift();
   const speciesId = chooseSpecies(e);
-  const sizeIn = rollSize(speciesId, e);
+  const sp = A.SPECIES[speciesId];
+
+  // --- legendary lunker roll — a rare named monster, best odds in low light / dialed tackle ---
+  const phase = A.PHASES[cond.phaseIdx];
+  let legendChance = 0.014 * phase.trophyLight * (0.45 + e.score) * A.WATER[cond.waterId].sizeBias;
+  legendChance = Math.min(0.05, legendChance);
+  const isLegend = !!sp.legend && Math.random() < legendChance;
+
+  let sizeIn = isLegend ? sp.legend.size * (0.97 + Math.random() * 0.1) : rollSize(speciesId, e);
+
   const lead = equippedFlies()[0];
   // set window from fly visibility + hook size + rod action
   const rod = A.RODS[tackle.rodId];
@@ -801,7 +831,7 @@ function triggerBite(e) {
   let win = (950 + lead.vis * 470 - (lead.hook - 8) * 42) * actionAdj;
   win = Math.max(750, Math.min(2600, win));
   bite = { speciesId, sizeIn, win, deadline: performance.now() + win,
-           trophy: sizeIn >= A.SPECIES[speciesId].trophy };
+           trophy: sizeIn >= sp.trophy, legend: isLegend };
 
   fg.src = IMG.drift;
   showFlyLine('drift');                    // match the line to the drift pose (fixes mid-mend takes)
@@ -811,6 +841,8 @@ function triggerBite(e) {
   driftMini.classList.add('hidden');
   setControls({ set: true });
   AUDIO.play('hookup');
+  // a legendary take announces itself (flashNote runs AFTER the hide above)
+  if (isLegend) flashNote('A MONSTER!');
 
   // miss window
   clearTimeout(biteFlash);
@@ -854,21 +886,25 @@ function startFight() {
   const s = A.SPECIES[bite.speciesId];
   const lead = equippedFlies()[0];
   const sizeFactor = (bite.sizeIn - s.size[0]) / (s.size[2] - s.size[0]); // 0..1
-  const need = Math.round(3 + s.fight * 3.5 + sizeFactor * 2);     // strips to land
-  const speed = 0.85 + s.fight * 0.9 + sizeFactor * 0.5;           // marker speed
-  const tippetRisk = Math.max(0, (lead.hook - 12) / 10) * (0.4 + sizeFactor);
+  const leg = bite.legend;
+  let need = Math.round(3 + s.fight * 3.5 + sizeFactor * 2);       // strips to land
+  let speed = 0.85 + s.fight * 0.9 + sizeFactor * 0.5;            // marker speed
+  let tippetRisk = Math.max(0, (lead.hook - 12) / 10) * (0.4 + sizeFactor);
+  let base = 0.46;
+  if (leg) { need += 3; speed += 0.35; tippetRisk = Math.min(0.85, tippetRisk + 0.18); base = 0.4; }
   fight = { need, got: 0, speed, pos: 0, dir: 1, zoneL: 0, zoneW: 0,
-            tippetRisk, raf: null, base: 0.46 };
+            tippetRisk, raf: null, base };
 
+  fightEl.classList.toggle('legend-fight', !!leg);
   fightEl.classList.remove('hidden');
   fg.style.display = 'none';
   placeZone();
   AUDIO.play('reel', 4);
   runIndicator();
 
-  // 20-second timeout — fish escapes if you idle
+  // timeout — fish escapes if you idle (a legend gives you a little longer)
   clearTimeout(fightTimeout);
-  fightTimeout = setTimeout(() => { if (state === ST.FIGHT) loseFish(false); }, 20000);
+  fightTimeout = setTimeout(() => { if (state === ST.FIGHT) loseFish(false); }, leg ? 26000 : 20000);
 }
 function placeZone() {
   const W = 100;
@@ -904,7 +940,7 @@ function doStrip() {
     // slack — chance the fish throws the hook
     const throwChance = 0.18 + fight.tippetRisk * 0.5;
     if (Math.random() < throwChance) {
-      loseFish(bite.trophy && bite.speciesId === 'brown' && Math.random() < 0.5);
+      loseFish(bite.legend || (bite.trophy && bite.speciesId === 'brown' && Math.random() < 0.5));
       return;
     }
     fight.got = Math.max(0, fight.got - 1);
@@ -920,32 +956,75 @@ function landFish() {
   cancelAnimationFrame(fight.raf);
   state = ST.REVEAL;
   fightEl.classList.add('hidden');
+  fightEl.classList.remove('legend-fight');
   const s = A.SPECIES[bite.speciesId];
   const inches = bite.sizeIn;
+  const isLegend = bite.legend;
   journal.casts++; journal.landed++;
   const rec = journal.species[bite.speciesId];
   rec.caught = true; rec.count++;
   const isPB = inches > rec.best; if (isPB) rec.best = inches;
   const isRecord = inches > journal.best;
   if (isRecord) journal.best = inches;
+  // log the legend the first (and best) time it's landed
+  if (isLegend && (!journal.legends[bite.speciesId] || inches > journal.legends[bite.speciesId].length)) {
+    journal.legends[bite.speciesId] = { name: s.legend.name, length: inches, date: Date.now() };
+  }
+  // session tracking
+  catchStreak++;
+  daySpecies[bite.speciesId] = true;
+  const slamDay = A.SPECIES_ORDER.every(id => daySpecies[id]);
+
+  // flavor by size class (legends get their own awe-struck pool)
+  const cls = isLegend ? 'legend'
+    : inches >= s.trophy ? 'trophy'
+    : inches >= (s.size[1] + s.size[2]) / 2 ? 'big'
+    : inches >= s.size[1] ? 'mid' : 'small';
+  const lines = A.CATCH_LINES[cls];
+  const flavor = lines[Math.floor(Math.random() * lines.length)];
+
+  // snapshot for the trophy card
+  const lead = equippedFlies()[0];
+  const rig = A.RIGS[tackle.rigId];
+  lastCatch = {
+    speciesId: bite.speciesId, species: s.name,
+    displayName: isLegend ? s.legend.name : s.name,
+    inches, legend: isLegend, trophy: bite.trophy, isRecord, flavor,
+    fly: lead ? lead.name : '—', rig: rig.name, rod: A.RODS[tackle.rodId].name,
+    seasonName: SEASON.name, phase: A.PHASES[cond.phaseIdx].label,
+    water: A.WATER[cond.waterId].label, hatch: A.HATCHES[cond.hatch].label,
+    img: s.img, date: new Date(),
+  };
+
   saveJournal();
+
+  // achievements
+  checkAchievements({
+    journal, inches, trophy: bite.trophy, legend: isLegend,
+    rigId: tackle.rigId, fly: lead, seasonId: SEASON_ID,
+    phaseId: A.PHASES[cond.phaseIdx].id, light: cond.light,
+    streak: catchStreak, slamDay,
+    dryEat: !!lead && rig.slots.every(sl => sl === 'top') && lead.cat !== 'nymph',
+  });
   renderJournal();
 
   revImg.src = s.img;
+  revImg.style.display = '';
   revImg.style.width = Math.max(34, Math.min(62, 30 + inches * 1.5)) + '%';
-  revSpecies.textContent = s.name;
+  revSpecies.textContent = isLegend ? s.legend.name : s.name;
   revInches.textContent = inches.toFixed(1);
+  $('reveal-size').classList.remove('hidden');
   reveal.classList.remove('lost');
-  revRibbon.classList.toggle('hidden', !(isRecord || (bite.trophy)));
-  revRibbon.textContent = isRecord ? 'NEW RECORD' : 'TROPHY';
-  // flavor by size class
-  let cls = inches >= s.trophy ? 'trophy' : inches >= (s.size[1]+s.size[2])/2 ? 'big' : inches >= s.size[1] ? 'mid' : 'small';
-  const lines = A.CATCH_LINES[cls];
-  revFlavor.textContent = lines[Math.floor(Math.random() * lines.length)];
+  reveal.classList.toggle('legend', isLegend);
+  revRibbon.classList.toggle('hidden', !(isLegend || isRecord || bite.trophy));
+  revRibbon.textContent = isLegend ? 'LEGENDARY' : isRecord ? 'NEW RECORD' : 'TROPHY';
+  revFlavor.textContent = flavor;
   releaseBtn.textContent = 'RELEASE';
+  cardBtn.classList.remove('hidden');
   reveal.classList.remove('hidden');
   reveal.classList.add('fade-in');
-  AUDIO.play(isRecord ? 'record' : 'catch');
+  AUDIO.play(isLegend ? 'legend' : isRecord ? 'record' : 'catch');
+  if (isLegend) showToast('👑', s.legend.name, `${s.name} landed · ${inches.toFixed(1)}"`, 'legend');
   pity = 0.7;   // just caught → reset the pity timer
 }
 
@@ -954,6 +1033,8 @@ function loseFish(dramatic) {
   if (fight) cancelAnimationFrame(fight.raf);
   state = ST.REVEAL;
   fightEl.classList.add('hidden');
+  fightEl.classList.remove('legend-fight');
+  catchStreak = 0;                   // broke off → streak resets
   journal.casts++;
   saveJournal();
   AUDIO.play('fail');
@@ -970,6 +1051,8 @@ function loseFish(dramatic) {
 }
 function showLost(msg, head) {
   reveal.classList.add('lost');
+  reveal.classList.remove('legend');
+  cardBtn.classList.add('hidden');
   revRibbon.classList.add('hidden');
   revSpecies.textContent = head;
   $('reveal-size').classList.add('hidden');
@@ -1057,6 +1140,270 @@ function renderJournal() {
       </div>`;
     list.appendChild(row);
   });
+  renderLegends();
+  renderAchievements();
+}
+
+// =========================================================
+//  TROPHY CARD — render the last catch to a downloadable canvas
+// =========================================================
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawTrophyCard(c) {
+  const cv = trophyCanvas, ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  const PAPER = '#ece2cb', PAPER2 = '#e2d6ba', INK = '#211d14', INKSOFT = '#4a4334';
+  const gold = '#c1922f', line = '#4ea016', rust = '#b5512a';
+  const accent = c.legend ? gold : c.trophy ? gold : line;
+
+  // paper background + subtle vignette
+  ctx.fillStyle = PAPER; ctx.fillRect(0, 0, W, H);
+  const vg = ctx.createRadialGradient(W / 2, H * 0.42, W * 0.2, W / 2, H * 0.5, W * 0.85);
+  vg.addColorStop(0, 'rgba(255,255,255,0.18)'); vg.addColorStop(1, 'rgba(33,29,20,0.10)');
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+
+  // border frame
+  ctx.strokeStyle = INK; ctx.lineWidth = 10;
+  roundRect(ctx, 26, 26, W - 52, H - 52, 22); ctx.stroke();
+  ctx.strokeStyle = accent; ctx.lineWidth = 3;
+  roundRect(ctx, 44, 44, W - 88, H - 88, 14); ctx.stroke();
+
+  ctx.textAlign = 'center';
+
+  // wordmark
+  ctx.fillStyle = INK;
+  ctx.font = '800 64px "Bricolage Grotesque", sans-serif';
+  ctx.fillText('BLUELINE', W / 2, 132);
+  ctx.fillStyle = INKSOFT;
+  ctx.font = '400 22px "Courier Prime", monospace';
+  ctx.fillText('FLY FISHING', W / 2, 168);
+  ctx.strokeStyle = 'rgba(33,29,20,0.25)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(120, 196); ctx.lineTo(W - 120, 196); ctx.stroke();
+
+  // ribbon (trophy / legend / record)
+  if (c.legend || c.trophy || c.isRecord) {
+    const label = c.legend ? 'LEGENDARY' : c.isRecord ? 'NEW RECORD' : 'TROPHY';
+    ctx.save();
+    ctx.translate(W / 2, 240); ctx.rotate(-0.03);
+    ctx.font = '800 30px "Bricolage Grotesque", sans-serif';
+    const tw = ctx.measureText(label).width;
+    ctx.fillStyle = gold;
+    roundRect(ctx, -tw / 2 - 28, -32, tw + 56, 52, 4); ctx.fill();
+    ctx.fillStyle = INK; ctx.textBaseline = 'middle';
+    ctx.fillText(label, 0, -4);
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+  }
+
+  // fish image
+  const img = cardFishImg;
+  const boxY = 300, boxH = 430;
+  if (img && img.complete && img.naturalWidth) {
+    const maxW = W - 220, maxH = boxH;
+    const r = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight);
+    const iw = img.naturalWidth * r, ih = img.naturalHeight * r;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 16;
+    ctx.drawImage(img, (W - iw) / 2, boxY + (boxH - ih) / 2, iw, ih);
+    ctx.restore();
+  }
+
+  // species / legend name
+  let y = 800;
+  ctx.fillStyle = INK;
+  ctx.font = '800 70px "Bricolage Grotesque", sans-serif';
+  ctx.fillText(c.displayName, W / 2, y);
+  if (c.legend) {
+    ctx.fillStyle = rust;
+    ctx.font = '700 26px "Courier Prime", monospace';
+    ctx.fillText(c.species.toUpperCase(), W / 2, y + 40);
+    y += 40;
+  }
+
+  // length — the hero number
+  y += 96;
+  ctx.fillStyle = line;
+  ctx.font = '700 92px "Courier Prime", monospace';
+  ctx.fillText(c.inches.toFixed(1) + '"', W / 2, y);
+
+  // flavor line
+  y += 60;
+  ctx.fillStyle = INKSOFT;
+  ctx.font = 'italic 400 26px "Courier Prime", monospace';
+  wrapText(ctx, '"' + c.flavor + '"', W / 2, y, W - 200, 34);
+
+  // stat grid at the bottom
+  const stats = [['FLY', c.fly], ['RIG', c.rig], ['ROD', c.rod],
+                 ['SEASON', c.seasonName], ['TIME', c.phase], ['WATER', c.water]];
+  const gx = 130, gw = (W - 260) / 3, gy = H - 250, gh = 84;
+  ctx.strokeStyle = 'rgba(33,29,20,0.25)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(120, gy - 30); ctx.lineTo(W - 120, gy - 30); ctx.stroke();
+  stats.forEach((s, i) => {
+    const col = i % 3, rowi = Math.floor(i / 3);
+    const x = gx + col * gw, ry = gy + rowi * gh;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = INKSOFT; ctx.font = '700 20px "Courier Prime", monospace';
+    ctx.fillText(s[0], x, ry);
+    ctx.fillStyle = INK; ctx.font = '700 28px "Bricolage Grotesque", sans-serif';
+    ctx.fillText(String(s[1]), x, ry + 34);
+  });
+
+  // footer date
+  ctx.textAlign = 'center';
+  ctx.fillStyle = INKSOFT; ctx.font = '400 22px "Courier Prime", monospace';
+  const d = c.date;
+  const ds = d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  ctx.fillText(ds, W / 2, H - 70);
+}
+
+function wrapText(ctx, text, x, y, maxW, lh) {
+  const words = text.split(' ');
+  let lineStr = '', lines = [];
+  words.forEach(w => {
+    const test = lineStr ? lineStr + ' ' + w : w;
+    if (ctx.measureText(test).width > maxW && lineStr) { lines.push(lineStr); lineStr = w; }
+    else lineStr = test;
+  });
+  if (lineStr) lines.push(lineStr);
+  lines.slice(0, 3).forEach((l, i) => ctx.fillText(l, x, y + i * lh));
+}
+
+let cardFishImg = null;
+async function openCard() {
+  if (!lastCatch) return;
+  AUDIO.play('strip');
+  // load the fish image fresh so it's decoded before we draw
+  cardFishImg = new Image();
+  cardFishImg.src = lastCatch.img;
+  try { await (cardFishImg.decode ? cardFishImg.decode() : Promise.resolve()); } catch (e) {}
+  try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) {}
+  drawTrophyCard(lastCatch);
+  cardModal.classList.remove('hidden');
+}
+function closeCard() { cardModal.classList.add('hidden'); }
+function downloadCard() {
+  if (!lastCatch) return;
+  let url;
+  try {
+    url = trophyCanvas.toDataURL('image/png');
+  } catch (e) {
+    // file:// origins taint the canvas (the fish image), blocking export.
+    // The preview still works — just nudge toward serving over http.
+    alert('Couldn\'t export the image — browsers block saving when the game is opened directly as a file. Run it from a local web server (e.g. "uv run python -m http.server") and try again.');
+    return;
+  }
+  const a = document.createElement('a');
+  const safe = lastCatch.displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  a.download = `blueline-${safe}-${lastCatch.inches.toFixed(0)}in.png`;
+  a.href = url;
+  a.click();
+}
+
+// =========================================================
+//  LIVING RIVER — ambient life on the water (cosmetic only)
+//  Rise rings dimple the surface and the odd fish splashes.
+//  Runs only when the scene is visible (idle/drift).
+// =========================================================
+const ambientVisible = () => (state === ST.IDLE || state === ST.DRIFT) && !document.hidden;
+const seasonLife = () => ({                 // per-season rise cadence (ms between rings)
+  spring: { rise: [2600, 5200] },
+  summer: { rise: [2000, 4200] },
+  autumn: { rise: [3200, 6500] },
+  winter: { rise: [5000, 11000] },
+}[SEASON_ID] || { rise: [3000, 6000] });
+
+function spawnRise() {
+  if (!ambientEl) return;
+  // place the dimple out on the open water — right of the angler, mid-frame
+  const x = 38 + Math.random() * 56;        // 38%..94% across
+  const y = 50 + Math.random() * 26;        // 50%..76% down (the water band)
+  const big = Math.random() < 0.22;         // some rises are a full splashy take
+  const ring = document.createElement('div');
+  ring.className = 'rise' + (big ? ' rise-splash' : '');
+  ring.style.left = x + '%';
+  ring.style.top = y + '%';
+  // scale rings down with distance (higher up the frame = further away = smaller)
+  const dist = 0.55 + (y - 50) / 26 * 0.7;
+  ring.style.setProperty('--rs', (big ? 1.5 : 1) * dist);
+  ambientEl.appendChild(ring);
+  if (big) AUDIO.play('rise');
+  setTimeout(() => ring.remove(), 2200);
+}
+
+let riseTimer = null;
+function scheduleRise() {
+  const [a, b] = seasonLife().rise;
+  riseTimer = setTimeout(() => { if (ambientVisible()) spawnRise(); scheduleRise(); }, a + Math.random() * (b - a));
+}
+function startAmbientLife() { clearTimeout(riseTimer); scheduleRise(); }
+
+// =========================================================
+//  ACHIEVEMENTS — persistent badges + toasts
+// =========================================================
+function showToast(icon, title, sub, kind) {
+  if (!toastsEl) return;
+  const t = document.createElement('div');
+  t.className = 'toast' + (kind ? ' ' + kind : '');
+  t.innerHTML = `<span class="t-icon">${icon}</span>
+    <span class="t-body"><span class="t-title">${title}</span><span class="t-sub">${sub}</span></span>`;
+  toastsEl.appendChild(t);
+  requestAnimationFrame(() => t.classList.add('in'));
+  setTimeout(() => { t.classList.remove('in'); setTimeout(() => t.remove(), 400); }, 4200);
+}
+
+// ctx is the snapshot built in landFish(); check every locked achievement against it
+function checkAchievements(ctx) {
+  A.ACHIEVEMENTS.forEach(a => {
+    if (journal.achievements[a.id]) return;
+    let ok = false;
+    try { ok = a.test(ctx); } catch (e) {}
+    if (ok) {
+      journal.achievements[a.id] = Date.now();
+      showToast(a.icon, 'Achievement: ' + a.name, a.desc, 'ach');
+    }
+  });
+  saveJournal();
+}
+
+function renderAchievements() {
+  const wrap = $('ach-list'); if (!wrap) return;
+  wrap.innerHTML = '';
+  const got = A.ACHIEVEMENTS.filter(a => journal.achievements[a.id]).length;
+  const cnt = $('ach-count'); if (cnt) cnt.textContent = `${got} / ${A.ACHIEVEMENTS.length}`;
+  A.ACHIEVEMENTS.forEach(a => {
+    const unlocked = !!journal.achievements[a.id];
+    const row = document.createElement('div');
+    row.className = 'ach-badge' + (unlocked ? '' : ' locked');
+    row.innerHTML = `<span class="ach-icon">${unlocked ? a.icon : '🔒'}</span>
+      <span class="ach-info"><span class="ach-name">${a.name}</span>
+      <span class="ach-desc">${a.desc}</span></span>`;
+    wrap.appendChild(row);
+  });
+}
+
+function renderLegends() {
+  const wrap = $('legend-list'); if (!wrap) return;
+  wrap.innerHTML = '';
+  A.SPECIES_ORDER.forEach(id => {
+    const s = A.SPECIES[id]; if (!s.legend) return;
+    const got = journal.legends[id];
+    const row = document.createElement('div');
+    row.className = 'legend-row' + (got ? ' landed' : '');
+    row.innerHTML = `<span class="legend-mark">${got ? '👑' : '❔'}</span>
+      <span class="legend-info">
+        <span class="legend-name">${got ? s.legend.name : '???'}</span>
+        <span class="legend-sub">${got ? `${s.name} · ${got.length.toFixed(1)}"` : s.legend.blurb}</span>
+      </span>`;
+    wrap.appendChild(row);
+  });
 }
 
 // =========================================================
@@ -1077,6 +1424,8 @@ async function setSeason(id) {
   if (!A.SEASONS[id] || id === SEASON_ID) return;
   SEASON_ID = id; SEASON = A.SEASONS[id]; IMG = buildPaths(SEASON);
   localStorage.setItem('bl_season', id);
+  journal.seasonsFished[id] = true;
+  checkAchievements({ journal });   // four-seasons may unlock here
   AUDIO.play('strip');
   AUDIO.setSeason(id);
   await preload(locImageList(IMG));      // have the new scene decoded before showing it
@@ -1102,6 +1451,25 @@ reelBtn.onclick = reelIn;
 releaseBtn.onclick = () => { hideAudioNudge(); toIdle(); $('reveal-size').classList.remove('hidden'); revImg.style.display = ''; };
 $('picker-scrim').onclick = closePicker;
 $('picker-close').onclick = closePicker;
+
+// trophy card
+cardBtn.onclick = openCard;
+$('card-close').onclick = closeCard;
+$('card-scrim').onclick = closeCard;
+$('card-download').onclick = downloadCard;
+
+// reset the log (species, records, legends, achievements)
+const resetJournalBtn = $('reset-journal');
+if (resetJournalBtn) resetJournalBtn.onclick = () => {
+  if (!confirm('Reset your catch log? Records, legends and achievements will be wiped.')) return;
+  localStorage.removeItem(LSK);
+  journal = loadJournal();
+  journal.seasonsFished[SEASON_ID] = true;
+  catchStreak = 0; daySpecies = {};
+  saveJournal();
+  renderJournal();
+  AUDIO.play('strip');
+};
 
 // collapsible tackle sections — remember open/closed across reloads
 ['sec-rod', 'sec-rig', 'sec-flies'].forEach(id => {
@@ -1155,6 +1523,7 @@ async function init() {
   rollWater();
   applyPhase();
 
+  journal.seasonsFished[SEASON_ID] = true; saveJournal();
   renderRods(); renderRigs(); renderSlots(); renderMatch(); renderJournal();
   renderSeasons();
   updateFlyMarker(); updateLineColor();
@@ -1172,6 +1541,7 @@ async function init() {
   await preload(locImageList(IMG).concat(FISH_IMGS));
   resize();
   toIdle();
+  startAmbientLife();   // rise rings + drifting birds while the scene is visible
 
   // advance the day on a slow timer
   setInterval(() => { if (state === ST.IDLE || state === ST.DRIFT) advancePhase(); }, 78000);

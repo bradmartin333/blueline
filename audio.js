@@ -319,6 +319,13 @@ const AUDIO = (function () {
     record() { // new record — bright arpeggio
       [659, 784, 988, 1319].forEach((f, i) => setTimeout(() => { if (ctx) tone(f, 0.32, 'triangle', 0.12); }, i * 110));
     },
+    rise() { // a fish rising somewhere out on the water — a soft, distant gloop
+      noiseBurst(0.18, 'lowpass', 700, 1.4, 0.05, 240);
+    },
+    legend() { // legendary fish — a grand, slow fanfare
+      [523, 659, 784, 1047, 1319].forEach((f, i) => setTimeout(() => { if (ctx) tone(f, 0.55, 'triangle', 0.13); }, i * 150));
+      [392, 523].forEach((f, i) => setTimeout(() => { if (ctx) tone(f, 1.2, 'sine', 0.08); }, i * 150));
+    },
   };
 
   return {

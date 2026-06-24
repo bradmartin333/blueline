@@ -17,6 +17,8 @@
     <div id="game-container">
       <img id="background" alt="stream">
       <img id="background2" alt="" aria-hidden="true">
+      <div id="scene-grade" aria-hidden="true"></div>
+      <div id="ambient" aria-hidden="true"></div>
       <svg id="fly-line" viewBox="0 0 1472 704" preserveAspectRatio="none" aria-hidden="true">
         <path id="fly-line-path"></path>
         <circle id="fly-dot" r="4"></circle>
@@ -36,6 +38,9 @@
     </div>
 
     <div id="take-prompt" class="hud-prompt hidden">SET!</div>
+
+    <!-- achievement / event toasts -->
+    <div id="toasts" aria-hidden="true"></div>
 
     <!-- control buttons -->
     <div id="controls">
@@ -64,7 +69,20 @@
       <img id="reveal-img" alt="fish">
       <div class="flavor" id="reveal-flavor"></div>
       <div class="reveal-actions">
+        <button id="card-btn" class="btn btn-ghost hidden">TROPHY CARD</button>
         <button id="release-btn" class="btn btn-cast">RELEASE</button>
+      </div>
+    </div>
+
+    <!-- trophy card overlay -->
+    <div id="card-modal" class="hidden">
+      <div class="card-scrim" id="card-scrim"></div>
+      <div class="card-sheet">
+        <canvas id="trophy-canvas" width="1000" height="1400"></canvas>
+        <div class="card-actions">
+          <button id="card-download" class="btn btn-cast">SAVE IMAGE</button>
+          <button id="card-close" class="btn btn-ghost">CLOSE</button>
+        </div>
       </div>
     </div>
 
@@ -143,6 +161,10 @@
         <div class="jr-summary" id="jr-summary"></div>
         <div class="sec-label">SPECIES LOG</div>
         <div id="journal-list"></div>
+        <div class="sec-label" style="margin-top:18px">LEGENDS OF THE CREEK</div>
+        <div id="legend-list"></div>
+        <div class="sec-label" style="margin-top:18px">ACHIEVEMENTS <span id="ach-count" class="ach-count"></span></div>
+        <div id="ach-list"></div>
         <div class="jr-record">Records persist on this device.</div>
         <div style="text-align:center;margin-top:12px">
           <button id="reset-journal" class="btn btn-ghost" style="font-size:12px;padding:8px 14px;color:var(--ink-soft);background:var(--paper-2);border-color:rgba(33,29,20,0.25);box-shadow:0 2px 0 rgba(33,29,20,0.2)">RESET LOG</button>

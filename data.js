@@ -200,25 +200,33 @@ DATA.SPECIES = {
     foods: ['caddis','terrestrial','attractor'], depths: ['surface','film','shallow'],
     lightLove: ['low','soft'], spook: 0.6,
     size: [5, 8, 13], trophy: 11, fight: 0.3,
-    blurb: 'Eager and gorgeous. Will smash a caddis at dusk all day long.' },
+    blurb: 'Eager and gorgeous. Will smash a caddis at dusk all day long.',
+    legend: { name: 'The Cedar Sentinel', size: 16,
+      blurb: 'An ancient char that haunts the deep cedar pool — bigger than any brookie has a right to be.' } },
   rainbow: {
     name: 'Rainbow Trout', img: 'assets/fish/rainbow.webp', weight: 0.85,
     foods: ['bwo','pmd','scud','attractor'], depths: ['film','shallow','deep'],
     lightLove: ['soft','bright'], spook: 1.0,
     size: [8, 12, 18], trophy: 16, fight: 0.6,
-    blurb: 'Mid-column generalist. Acrobatic — expect jumps and screaming runs.' },
+    blurb: 'Mid-column generalist. Acrobatic — expect jumps and screaming runs.',
+    legend: { name: 'Chrome', size: 24,
+      blurb: 'A slab of polished steel that cartwheels into the backing the instant it feels the hook.' } },
   brown: {
     name: 'Brown Trout', img: 'assets/fish/brown.webp', weight: 0.45,
     foods: ['stonefly','terrestrial','caddis'], depths: ['shallow','deep'],
     lightLove: ['low'], spook: 1.5,
     size: [10, 15, 23], trophy: 18, fight: 0.85,
-    blurb: 'Wary and big. Holds to structure, hunts the low light. The prize of the run.' },
+    blurb: 'Wary and big. Holds to structure, hunts the low light. The prize of the run.',
+    legend: { name: 'Old Scarjaw', size: 30,
+      blurb: 'The hook-jawed monster of the logjam. Anglers have a hundred stories and zero photos.' } },
   cutthroat: {
     name: 'Cutthroat Trout', img: 'assets/fish/cutthroat.webp', weight: 0.6,
     foods: ['attractor','terrestrial','stonefly'], depths: ['surface','film','shallow'],
     lightLove: ['soft','bright'], spook: 0.8,
     size: [8, 12, 18], trophy: 16, fight: 0.5,
-    blurb: 'Native cutt with the crimson slash. Opportunistic — rises happily to a big attractor dry.' },
+    blurb: 'Native cutt with the crimson slash. Opportunistic — rises happily to a big attractor dry.',
+    legend: { name: 'The Ghost of Slate Run', size: 23,
+      blurb: 'A buttery old native with a blood-red slash, seen only at first and last light.' } },
 };
 
 DATA.SPECIES_ORDER = ['brook', 'rainbow', 'brown', 'cutthroat'];
@@ -237,6 +245,42 @@ DATA.CATCH_LINES = {
   trophy: ['It ate, then everything went sideways.', 'A screaming run — hands still shaking.',
            'Bent the rod to the cork and held on.', 'The fish of the day, no contest.',
            'You\'ll be telling this one for years.', 'Pure adrenaline from the take to the net.'],
+  legend: ['A fish of legend, finally in the net. Nobody will believe you.',
+           'The creek\'s ghost made real — every knot held by a miracle.',
+           'You\'ll measure every fish against this one for the rest of your life.',
+           'The whole valley seemed to go quiet when it slid to hand.',
+           'You shook for a full minute before you could even reach for the net.'],
 };
+
+// ---- Achievements ----
+// Persistent badges checked after each landed fish. `test(ctx)` gets a context
+// snapshot: { journal, species, inches, trophy, legend, rigId, rod, fly, fly.cat,
+// seasonId, phaseId, light, streak, dryEat, slamDay }.
+DATA.ACHIEVEMENTS = [
+  { id: 'first',     icon: '🎣', name: 'First Blood',      desc: 'Land your very first fish.',
+    test: c => c.journal.landed >= 1 },
+  { id: 'trophy',    icon: '🏆', name: 'Wallhanger',       desc: 'Land a trophy-class fish.',
+    test: c => c.trophy },
+  { id: 'slam',      icon: '🎯', name: 'Grand Slam',       desc: 'Land all four trout species.',
+    test: c => Object.values(c.journal.species).every(s => s.caught) },
+  { id: 'slamday',   icon: '☀️', name: 'Slam in a Day',    desc: 'Land all four species in a single day.',
+    test: c => c.slamDay },
+  { id: 'streak',    icon: '🔥', name: 'On Fire',          desc: 'Land 5 fish in a row without losing one.',
+    test: c => c.streak >= 5 },
+  { id: 'dry',       icon: '🪶', name: 'Dry-Fly Purist',   desc: 'Fool a fish on a dry fly.',
+    test: c => c.dryEat },
+  { id: 'backing',   icon: '💨', name: 'Into the Backing', desc: 'Land a fish of 20 inches or more.',
+    test: c => c.inches >= 20 },
+  { id: 'lowlight',  icon: '🌙', name: 'Night Shift',      desc: 'Land a fish at dawn or dusk.',
+    test: c => c.phaseId === 'dawn' || c.phaseId === 'dusk' },
+  { id: 'fourseason',icon: '🍂', name: 'Four Seasons',     desc: 'Fish all four seasons of the creek.',
+    test: c => Object.keys(c.journal.seasonsFished || {}).length >= 4 },
+  { id: 'legend',    icon: '👑', name: 'Local Legend',     desc: 'Land one of the creek\'s legendary fish.',
+    test: c => c.legend },
+  { id: 'allLegend', icon: '🐉', name: 'Folklore',         desc: 'Land every legendary fish in the creek.',
+    test: c => DATA.SPECIES_ORDER.every(id => c.journal.legends && c.journal.legends[id]) },
+  { id: 'century',   icon: '💯', name: 'Centurion',        desc: 'Land 100 fish.',
+    test: c => c.journal.landed >= 100 },
+];
 
 window.DATA = DATA;
