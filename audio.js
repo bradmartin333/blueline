@@ -199,8 +199,8 @@ const AUDIO = (function () {
     const burstSec = 1 + Math.random() * 2;
     const t = ctx.currentTime;
     cicadaGain.gain.cancelScheduledValues(t);
-    cicadaGain.gain.linearRampToValueAtTime(0.022, t + 0.3);
-    cicadaGain.gain.setValueAtTime(0.022, t + 0.3 + burstSec);
+    cicadaGain.gain.linearRampToValueAtTime(0.001, t + 0.3);
+    cicadaGain.gain.setValueAtTime(0.001, t + 0.3 + burstSec);1
     cicadaGain.gain.linearRampToValueAtTime(0, t + 0.3 + burstSec + 0.4);
     const silenceMs = (45 + Math.random() * 20) * 1000;
     cicadaBurstTimer = setTimeout(scheduleCicadaBurst, (burstSec + 0.7) * 1000 + silenceMs);
