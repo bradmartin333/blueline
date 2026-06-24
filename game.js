@@ -273,9 +273,13 @@ function applyPhase() {
   renderReport();
   renderMatch();
 }
-function advancePhase() {
-  cond.phaseIdx = (cond.phaseIdx + 1) % A.PHASES.length;
-  if (cond.phaseIdx === 0) daySpecies = {};   // a new dawn → fresh shot at a day-slam
+// keep the time-of-day phase pinned to the player's real-world clock — it never
+// cycles on its own, it just follows the wall clock as the actual hours pass.
+function syncPhaseToClock() {
+  const next = currentPhaseIdx();
+  if (next === cond.phaseIdx) return;
+  if (next === 0) daySpecies = {};   // rolled into a new dawn → fresh shot at a day-slam
+  cond.phaseIdx = next;
   if (Math.random() < 0.35) rollWater();
   applyPhase();
 }
@@ -1604,7 +1608,7 @@ async function init() {
   toIdle();
   startAmbientLife();   // rise rings + drifting birds while the scene is visible
 
-  // advance the day on a slow timer
-  setInterval(() => { if (state === ST.IDLE || state === ST.DRIFT) advancePhase(); }, 78000);
+  // keep the scene in step with the player's real-world time of day
+  setInterval(() => { if (state === ST.IDLE || state === ST.DRIFT) syncPhaseToClock(); }, 60000);
 }
 init();
