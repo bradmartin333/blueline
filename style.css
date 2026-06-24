@@ -289,9 +289,7 @@ button { font-family: var(--font-display); cursor: pointer; }
 /* ---------------- Tackle panel ---------------- */
 #tackle {
   flex: 0 0 var(--panel-w); width: var(--panel-w);
-  background:
-    repeating-linear-gradient(0deg, transparent, transparent 31px, rgba(33,29,20,0.05) 31px, rgba(33,29,20,0.05) 32px),
-    var(--paper);
+  background: var(--paper);
   border-left: 3px solid var(--ink);
   display: flex; flex-direction: column;
   box-shadow: -10px 0 40px rgba(0,0,0,0.4);
@@ -496,6 +494,9 @@ details.sec > summary.sec-label:hover { color: var(--ink); }
 .jr-summary .row .v { font-family: var(--font-display); font-weight: 700; }
 .jr-summary .row .v.gold { color: var(--gold); }
 .jr-record { text-align: center; font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); margin-top: 14px; letter-spacing: 0.08em; }
+
+.panel-credit { text-align: center; font-family: var(--font-mono); font-size: 10px; color: var(--ink-faint); padding: 8px 12px 10px; letter-spacing: 0.06em; }
+.panel-credit a { color: var(--ink-soft); text-decoration: underline; }
 
 /* utility */
 .hidden { display: none !important; }
