@@ -209,9 +209,15 @@ DATA.SPECIES = {
     lightLove: ['low'], spook: 1.5,
     size: [10, 15, 23], trophy: 18, fight: 0.85,
     blurb: 'Wary and big. Holds to structure, hunts the low light. The prize of the run.' },
+  cutthroat: {
+    name: 'Cutthroat Trout', img: 'assets/fish/cutthroat.png', weight: 0.6,
+    foods: ['attractor','terrestrial','stonefly'], depths: ['surface','film','shallow'],
+    lightLove: ['soft','bright'], spook: 0.8,
+    size: [8, 12, 18], trophy: 16, fight: 0.5,
+    blurb: 'Native cutt with the crimson slash. Opportunistic — rises happily to a big attractor dry.' },
 };
 
-DATA.SPECIES_ORDER = ['brook', 'rainbow', 'brown'];
+DATA.SPECIES_ORDER = ['brook', 'rainbow', 'brown', 'cutthroat'];
 
 // ---- Catch flavor lines — about THIS catch / how it went ----
 DATA.CATCH_LINES = {
