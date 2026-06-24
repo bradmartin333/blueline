@@ -18,18 +18,22 @@ DATA.DEPTHS = ['surface', 'film', 'shallow', 'deep'];
 // identical everywhere — so every season shares one drift config (cadence, focal
 // point, fly-line anchors) via SEASON_BASE and just points at its own art folder.
 //
-//   The cast animation (fg_cast_*.webp + line_cast_*.webp) is SHARED across seasons
-//   in assets/cast/ — the first-person cast looks the same all year.
+//   The cast animation (cast_*.webp + line_*.webp in assets/cast/) and the angler
+//   poses (drift / mend / set in assets/fg/) are SHARED across seasons — the
+//   first-person action looks the same all year, so only backgrounds are seasonal.
 //
-//   File layout per season (assets/seasons/<id>/):
-//     bg_cast.webp            — idle / casting backdrop (the still stream)
-//     bg_drift_0.webp … _N    — drift backdrops, played in sequence as the fly
-//                              travels downstream (any number of frames)
-//     fg_drift.webp           — foreground drift pose (rod held, NO baked fly line)
-//     fg_mend.webp            — foreground mend pose (NO baked fly line)
-//     fg_set.webp             — hookset close-up (also reused for the break-off flash)
+//   Shared foreground (assets/fg/):
+//     drift.webp              — drift pose (rod held, NO baked fly line)
+//     mend.webp               — mend pose (NO baked fly line)
+//     set.webp                — hookset close-up (also reused for the break-off flash)
 //
-//   driftFrames  : how many bg_drift_* frames exist.
+//   Backgrounds per season (assets/seasons/<id>/), numbered 0..N:
+//     0.webp                  — the still scene: idle / casting backdrop AND the first
+//                              drift frame (so the cast scene drifts like any other)
+//     1.webp … N.webp         — downstream drift backdrops, played in sequence as the
+//                              fly travels downstream (any number of frames)
+//
+//   bgFrames     : how many numbered background frames exist (incl. frame 0).
 //   driftFrameMs : ms each drift backdrop holds before the cosmetic hard-cut.
 //   driftTravelMs: ms for the lure to float the whole flyUp→flyDown run (the drift's
 //                  real length; a mend nudges it back upstream a little).
@@ -40,7 +44,7 @@ DATA.DEPTHS = ['surface', 'film', 'shallow', 'deep'];
 //                  toward the top of the frame to land it further from the angler /
 //                  further upstream); flyDown is where the drift ends, nearest you.
 const SEASON_BASE = {
-  driftFrames: 2,
+  bgFrames: 3,                 // numbered backdrops 0..2 (0 = still/cast scene, then drift)
   driftFrameMs: 6500,          // bg hard-cut cadence (cosmetic)
   driftTravelMs: 12000,        // how long the lure takes to float the full run
   focalX: 0.42, focalY: 0.5,

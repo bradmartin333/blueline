@@ -12,29 +12,33 @@ let SEASON_ID = localStorage.getItem('bl_season') || A.SEASON_ORDER[0];
 if (!A.SEASONS[SEASON_ID]) SEASON_ID = A.SEASON_ORDER[0];
 let SEASON = A.SEASONS[SEASON_ID];
 
-// The cast animation (angler + rod + line mask) is the same first-person action in
-// every season, so it lives in one shared folder rather than being duplicated.
-const CAST_DIR = 'assets/cast';
+// The cast animation (angler + rod + line mask) and the angler poses (drift / mend /
+// set) are the same first-person action in every season, so they live in shared
+// folders rather than being duplicated per season. Only the backgrounds are seasonal.
+const CAST_DIR = 'assets/cast';   // shared cast frames + line masks
+const FG_DIR = 'assets/fg';       // shared angler poses
 const CAST_FRAMES = 4;
 
 // resolve every scene asset for a season from its manifest (counts → file names)
 function buildPaths(season) {
   const d = season.dir;
   return {
-    castBg:  `${d}/bg_cast.webp`,
-    driftBg: Array.from({ length: season.driftFrames }, (_, i) => `${d}/bg_drift_${i}.webp`),
-    cast:    Array.from({ length: CAST_FRAMES }, (_, i) => `${CAST_DIR}/fg_cast_${i}.webp`),
-    castLine: Array.from({ length: CAST_FRAMES }, (_, i) => `${CAST_DIR}/line_cast_${i}.webp`),
-    drift:   `${d}/fg_drift.webp`,
-    mend:    `${d}/fg_mend.webp`,
-    set:     `${d}/fg_set.webp`,
+    // numbered scene backdrops: bg[0] is the still scene (idle / casting / first drift
+    // frame); bg[1..] are the downstream drift backdrops. They're all drift frames, so
+    // the cast scene gets the same fly line + bob + pan as the rest.
+    bg:      Array.from({ length: season.bgFrames }, (_, i) => `${d}/${i}.webp`),
+    cast:    Array.from({ length: CAST_FRAMES }, (_, i) => `${CAST_DIR}/cast_${i}.webp`),
+    castLine: Array.from({ length: CAST_FRAMES }, (_, i) => `${CAST_DIR}/line_${i}.webp`),
+    drift:   `${FG_DIR}/drift.webp`,
+    mend:    `${FG_DIR}/mend.webp`,
+    set:     `${FG_DIR}/set.webp`,
   };
 }
 let IMG = buildPaths(SEASON);
 
 const FISH_IMGS = A.SPECIES_ORDER.map(id => A.SPECIES[id].img);
 // flat list of one season's scene images, for preloading
-const locImageList = (img) => [img.castBg, ...img.driftBg, ...img.cast, ...img.castLine, img.drift, img.mend, img.set];
+const locImageList = (img) => [...img.bg, ...img.cast, ...img.castLine, img.drift, img.mend, img.set];
 
 // ---------------- DOM ----------------
 const bg = $('background'), bg2 = $('background2'), fg = $('foreground');
@@ -543,7 +547,7 @@ function toIdle() {
   hideFlyLine();
   castLineEl.classList.remove('show');
   bg.style.display = ''; bg2.style.display = '';
-  setBackground(IMG.castBg, true); paintLight();
+  setBackground(IMG.bg[0], true); paintLight();
   fg.style.display = 'none';
   fg.className = '';
   resetFgTransform();
@@ -572,7 +576,13 @@ function startCast() {
   let i = 0;
   (function frame() {
     if (state !== ST.CASTING) return;
-    if (i >= IMG.cast.length) { AUDIO.play('splash'); startDrift(); return; }
+    if (i >= IMG.cast.length) {
+      AUDIO.play('splash');
+      // the still scene (bg[0]) is the first drift frame, so just start the drift —
+      // the fly line + angler bob + pan all play over it, same as every drift frame
+      startDrift();
+      return;
+    }
     fg.src = IMG.cast[i];
     const mask = `url("${IMG.castLine[i]}")`;
     castLineEl.style.webkitMaskImage = mask;
@@ -600,7 +610,7 @@ const driftFgX = () => (1 - panSeg * 2) * PAN_X - driftProgress * ROD_FOLLOW;
 
 function startDriftFrames() {
   driftFrameIdx = 0; panSeg = 0;
-  setBackground(IMG.driftBg[0], false);   // hard cut — no transition between bg frames
+  setBackground(IMG.bg[0], false);        // start on the still scene (already shown after the cast)
   paintLight();
 }
 function tickDrift(dt, now) {
@@ -608,11 +618,11 @@ function tickDrift(dt, now) {
   driftProgress = Math.min(1, driftProgress + dt * 1000 / (SEASON.driftTravelMs || 12000));
   // angler pan + bg frame cuts — cosmetic only; they never touch the drag/lure state
   const segSec = (SEASON.driftFrameMs || 6500) / 1000;
-  if (driftFrameIdx < IMG.driftBg.length - 1) {
+  if (driftFrameIdx < IMG.bg.length - 1) {
     panSeg += dt / segSec;
     if (panSeg >= 1) {
       driftFrameIdx++;
-      setBackground(IMG.driftBg[driftFrameIdx], false);          // hard cut to next still
+      setBackground(IMG.bg[driftFrameIdx], false);               // hard cut to next still
       paintLight();
       panSeg = 0;                          // angler snaps back for the fresh stretch
     }

@@ -37,5 +37,6 @@ build step, no bundler, no package manager. Open `index.html` to run it.
 - `game.js` — engine: state machine, conditions, drift/fight loops, rendering.
 - `audio.js` — sound.
 - `index.html` / `style.css` — markup and styling.
-- `assets/seasons/<id>/` — per-season scene art; `assets/cast/` — shared cast
-  animation frames; `assets/fish/` — fish images.
+- `assets/seasons/<id>/` — per-season backgrounds (`cast.webp`, `drift_*.webp`);
+  `assets/cast/` — shared cast animation frames + line masks; `assets/fg/` — shared
+  angler poses (`drift`/`mend`/`set`); `assets/fish/` — fish images.
