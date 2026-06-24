@@ -110,6 +110,7 @@ function loadJournal() {
   if (!j.legends) j.legends = {};
   if (!j.achievements) j.achievements = {};
   if (!j.seasonsFished) j.seasonsFished = {};
+  if (!j.daily) j.daily = { key: null, done: false, streak: 0, lastCompleted: null };
   A.SPECIES_ORDER.forEach(id => { if (!j.species[id]) j.species[id] = { caught: false, count: 0, best: 0 }; });
   return j;
 }
@@ -1017,14 +1018,16 @@ function landFish() {
 
   saveJournal();
 
-  // achievements
-  checkAchievements({
-    journal, inches, trophy: bite.trophy, legend: isLegend,
+  // shared context for achievements + the daily challenge
+  const ctx = {
+    journal, speciesId: bite.speciesId, inches, trophy: bite.trophy, legend: isLegend,
     rigId: tackle.rigId, fly: lead, seasonId: SEASON_ID,
     phaseId: A.PHASES[cond.phaseIdx].id, light: cond.light,
-    streak: catchStreak, slamDay,
+    streak: catchStreak, slamDay, daySpeciesCount: Object.keys(daySpecies).length,
     dryEat: !!lead && rig.slots.every(sl => sl === 'top') && lead.cat !== 'nymph',
-  });
+  };
+  checkAchievements(ctx);
+  checkDaily(ctx);
   renderJournal();
 
   revImg.src = s.img;
@@ -1153,6 +1156,7 @@ function renderJournal() {
       </div>`;
     list.appendChild(row);
   });
+  renderDaily();
   renderLegends();
   renderAchievements();
 }
@@ -1417,6 +1421,50 @@ function renderLegends() {
       </span>`;
     wrap.appendChild(row);
   });
+}
+
+// =========================================================
+//  DAILY CHALLENGE — one seeded objective per calendar day
+// =========================================================
+function dateKey(d) { d = d || new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; }
+function hashStr(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
+function todayChallenge() { return A.DAILY[hashStr(dateKey()) % A.DAILY.length]; }
+function ensureDailyToday() {
+  const k = dateKey();
+  if (journal.daily.key !== k) { journal.daily.key = k; journal.daily.done = false; saveJournal(); }
+}
+function dailyAlive() {
+  const y = dateKey(new Date(Date.now() - 86400000));
+  return journal.daily.lastCompleted === dateKey() || journal.daily.lastCompleted === y;
+}
+function checkDaily(ctx) {
+  ensureDailyToday();
+  if (journal.daily.done) return;
+  const ch = todayChallenge();
+  let ok = false; try { ok = ch.test(ctx); } catch (e) {}
+  if (!ok) return;
+  journal.daily.done = true;
+  const y = dateKey(new Date(Date.now() - 86400000));
+  journal.daily.streak = (journal.daily.lastCompleted === y) ? (journal.daily.streak || 0) + 1 : 1;
+  journal.daily.lastCompleted = dateKey();
+  saveJournal();
+  const sk = journal.daily.streak;
+  showToast('📅', 'Daily Challenge done!', ch.desc + (sk > 1 ? ` · 🔥 ${sk}-day streak` : ''), 'ach');
+  renderDaily();
+}
+function renderDaily() {
+  const wrap = $('daily-card'); if (!wrap) return;
+  ensureDailyToday();
+  const ch = todayChallenge();
+  const d = journal.daily;
+  const streak = dailyAlive() ? (d.streak || 0) : 0;
+  wrap.innerHTML = `
+    <div class="daily-box ${d.done ? 'done' : ''}">
+      <div class="daily-head"><span>DAILY CHALLENGE</span>
+        <span class="daily-streak">${streak > 0 ? '🔥 ' + streak + '-day streak' : ''}</span></div>
+      <div class="daily-desc">${ch.desc}</div>
+      <div class="daily-status">${d.done ? '✓ Complete — back tomorrow for a new one' : 'Not yet — go land it'}</div>
+    </div>`;
 }
 
 // =========================================================

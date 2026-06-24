@@ -116,6 +116,24 @@ DATA.WATER = {
              blurb: 'Broken water. Drag is hidden and fish hold tight — nymphs shine.' },
 };
 
+// ---- Daily challenge pool ----
+// One is picked per calendar day (seeded by the date). test(ctx) runs against the
+// just-landed fish; ctx = { speciesId, inches, trophy, legend, rigId, fly, phaseId,
+// light, streak, daySpeciesCount, slamDay, dryEat, seasonId }.
+DATA.DAILY = [
+  { id: 'trophy',  desc: 'Land any trophy-class fish.',                 test: c => c.trophy },
+  { id: 'big16',   desc: 'Land a fish of 16″ or better.',              test: c => c.inches >= 16 },
+  { id: 'brown',   desc: 'Land a brown trout.',                        test: c => c.speciesId === 'brown' },
+  { id: 'brook',   desc: 'Land a brook trout.',                        test: c => c.speciesId === 'brook' },
+  { id: 'rainbow', desc: 'Land a rainbow trout.',                      test: c => c.speciesId === 'rainbow' },
+  { id: 'cutt',    desc: 'Land a cutthroat trout.',                    test: c => c.speciesId === 'cutthroat' },
+  { id: 'dry',     desc: 'Fool a fish on a dry fly.',                  test: c => c.dryEat },
+  { id: 'nymph',   desc: 'Land a fish on a nymph rig.',                test: c => DATA.RIGS[c.rigId].slots.every(s => s === 'drop') },
+  { id: 'streak3', desc: 'Land 3 fish in a row without losing one.',   test: c => c.streak >= 3 },
+  { id: 'twospp',  desc: 'Land 2 different species today.',            test: c => c.daySpeciesCount >= 2 },
+  { id: 'lowlight',desc: 'Land a fish at dawn or dusk.',               test: c => c.phaseId === 'dawn' || c.phaseId === 'dusk' },
+];
+
 // ---- Flies ----
 // cat: dry | terrestrial | nymph
 // imitates: hatch ids this fly matches (attractor = matches anything weakly)

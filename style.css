@@ -667,3 +667,14 @@ details.sec > summary.sec-label:hover { color: var(--ink); }
 .ach-name { font-family: var(--font-display); font-weight: 700; font-size: 14px; }
 .ach-badge.locked .ach-name { font-weight: 400; font-style: italic; color: var(--ink-soft); }
 .ach-desc { display: block; font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); margin-top: 1px; }
+
+/* ---------------- Daily challenge card ---------------- */
+.daily-box { background: var(--ink); color: var(--paper); border-radius: 6px; padding: 12px 14px;
+  border-left: 4px solid var(--gold); margin-bottom: 16px; }
+.daily-box.done { border-left-color: var(--line-d); }
+.daily-head { display: flex; justify-content: space-between; align-items: center;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.18em; color: var(--ink-faint); margin-bottom: 5px; }
+.daily-streak { color: var(--gold); }
+.daily-desc { font-family: var(--font-display); font-weight: 700; font-size: 15px; line-height: 1.3; }
+.daily-status { font-family: var(--font-mono); font-size: 11px; margin-top: 6px; color: var(--warn); }
+.daily-box.done .daily-status { color: var(--line); }
