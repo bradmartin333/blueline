@@ -21,13 +21,13 @@ const CAST_FRAMES = 4;
 function buildPaths(season) {
   const d = season.dir;
   return {
-    castBg:  `${d}/bg_cast.png`,
-    driftBg: Array.from({ length: season.driftFrames }, (_, i) => `${d}/bg_drift_${i}.png`),
-    cast:    Array.from({ length: CAST_FRAMES }, (_, i) => `${CAST_DIR}/fg_cast_${i}.png`),
-    castLine: Array.from({ length: CAST_FRAMES }, (_, i) => `${CAST_DIR}/line_cast_${i}.png`),
-    drift:   `${d}/fg_drift.png`,
-    mend:    `${d}/fg_mend.png`,
-    set:     `${d}/fg_set.png`,
+    castBg:  `${d}/bg_cast.webp`,
+    driftBg: Array.from({ length: season.driftFrames }, (_, i) => `${d}/bg_drift_${i}.webp`),
+    cast:    Array.from({ length: CAST_FRAMES }, (_, i) => `${CAST_DIR}/fg_cast_${i}.webp`),
+    castLine: Array.from({ length: CAST_FRAMES }, (_, i) => `${CAST_DIR}/line_cast_${i}.webp`),
+    drift:   `${d}/fg_drift.webp`,
+    mend:    `${d}/fg_mend.webp`,
+    set:     `${d}/fg_set.webp`,
   };
 }
 let IMG = buildPaths(SEASON);

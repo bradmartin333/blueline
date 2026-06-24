@@ -113,7 +113,7 @@ button { font-family: var(--font-display); cursor: pointer; }
 }
 
 /* cast-line: the baked cast line, re-colored per rod. A solid fill masked by the
-   per-frame line shape (line_cast_N.png), so it follows the cast art exactly. */
+   per-frame line shape (line_cast_N.webp), so it follows the cast art exactly. */
 #cast-line {
   position: absolute; inset: 0;
   width: 100%; height: 100%;

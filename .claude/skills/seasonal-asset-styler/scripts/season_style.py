@@ -10,11 +10,14 @@ transparent foreground overlays (e.g. an arm + rod). Backgrounds get a full
 recolor plus drifting scene elements; transparent overlays get only a subtle
 matching colour grade so their lighting stays consistent with the scene.
 
+Inputs may be PNG / JPEG / WebP; output is always written as lossless WebP
+(matching the game's `.webp` assets), preserving dimensions and alpha exactly.
+
 The inline script metadata above lets `uv run` install numpy + Pillow
 automatically — no manual venv or pip:
     uv run season_style.py --season autumn --input ./assets --outdir ./out --backup
-    uv run season_style.py --season winter --input a.png b.png --outdir ./out
-    uv run season_style.py --season spring --input fg.png --outdir ./out --as-foreground
+    uv run season_style.py --season winter --input a.webp b.webp --outdir ./out
+    uv run season_style.py --season spring --input fg.webp --outdir ./out --as-foreground
 
 Run `uv run season_style.py --help` for all options.
 """
@@ -212,8 +215,10 @@ def process(path, season, outdir, force=None, do_elements=True, seed=0):
             result = add_elements(result, season, random.Random(seed)).convert("RGB")
         kind = "background"
     os.makedirs(outdir, exist_ok=True)
-    result.save(os.path.join(outdir, name))
-    print(f"  {name:18} -> {season} ({kind})")
+    # always export WebP (lossless keeps alpha edges + recolor crisp, like the game assets)
+    outname = os.path.splitext(name)[0] + ".webp"
+    result.save(os.path.join(outdir, outname), "WEBP", lossless=True, quality=100, method=6)
+    print(f"  {name:18} -> {outname} ({season}, {kind})")
 
 def collect(inputs):
     files = []

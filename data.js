@@ -18,16 +18,16 @@ DATA.DEPTHS = ['surface', 'film', 'shallow', 'deep'];
 // identical everywhere — so every season shares one drift config (cadence, focal
 // point, fly-line anchors) via SEASON_BASE and just points at its own art folder.
 //
-//   The cast animation (fg_cast_*.png + line_cast_*.png) is SHARED across seasons
+//   The cast animation (fg_cast_*.webp + line_cast_*.webp) is SHARED across seasons
 //   in assets/cast/ — the first-person cast looks the same all year.
 //
 //   File layout per season (assets/seasons/<id>/):
-//     bg_cast.png            — idle / casting backdrop (the still stream)
-//     bg_drift_0.png … _N    — drift backdrops, played in sequence as the fly
+//     bg_cast.webp            — idle / casting backdrop (the still stream)
+//     bg_drift_0.webp … _N    — drift backdrops, played in sequence as the fly
 //                              travels downstream (any number of frames)
-//     fg_drift.png           — foreground drift pose (rod held, NO baked fly line)
-//     fg_mend.png            — foreground mend pose (NO baked fly line)
-//     fg_set.png             — hookset close-up (also reused for the break-off flash)
+//     fg_drift.webp           — foreground drift pose (rod held, NO baked fly line)
+//     fg_mend.webp            — foreground mend pose (NO baked fly line)
+//     fg_set.webp             — hookset close-up (also reused for the break-off flash)
 //
 //   driftFrames  : how many bg_drift_* frames exist.
 //   driftFrameMs : ms each drift backdrop holds before the cosmetic hard-cut.
@@ -192,25 +192,25 @@ DATA.weightRank = { light: 0, medium: 1, heavy: 2 };
 // img
 DATA.SPECIES = {
   brook: {
-    name: 'Brook Trout', img: 'assets/fish/brook.png', weight: 1.0,
+    name: 'Brook Trout', img: 'assets/fish/brook.webp', weight: 1.0,
     foods: ['caddis','terrestrial','attractor'], depths: ['surface','film','shallow'],
     lightLove: ['low','soft'], spook: 0.6,
     size: [5, 8, 13], trophy: 11, fight: 0.3,
     blurb: 'Eager and gorgeous. Will smash a caddis at dusk all day long.' },
   rainbow: {
-    name: 'Rainbow Trout', img: 'assets/fish/rainbow.png', weight: 0.85,
+    name: 'Rainbow Trout', img: 'assets/fish/rainbow.webp', weight: 0.85,
     foods: ['bwo','pmd','scud','attractor'], depths: ['film','shallow','deep'],
     lightLove: ['soft','bright'], spook: 1.0,
     size: [8, 12, 18], trophy: 16, fight: 0.6,
     blurb: 'Mid-column generalist. Acrobatic — expect jumps and screaming runs.' },
   brown: {
-    name: 'Brown Trout', img: 'assets/fish/brown.png', weight: 0.45,
+    name: 'Brown Trout', img: 'assets/fish/brown.webp', weight: 0.45,
     foods: ['stonefly','terrestrial','caddis'], depths: ['shallow','deep'],
     lightLove: ['low'], spook: 1.5,
     size: [10, 15, 23], trophy: 18, fight: 0.85,
     blurb: 'Wary and big. Holds to structure, hunts the low light. The prize of the run.' },
   cutthroat: {
-    name: 'Cutthroat Trout', img: 'assets/fish/cutthroat.png', weight: 0.6,
+    name: 'Cutthroat Trout', img: 'assets/fish/cutthroat.webp', weight: 0.6,
     foods: ['attractor','terrestrial','stonefly'], depths: ['surface','film','shallow'],
     lightLove: ['soft','bright'], spook: 0.8,
     size: [8, 12, 18], trophy: 16, fight: 0.5,

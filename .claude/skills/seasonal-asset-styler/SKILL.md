@@ -35,15 +35,16 @@ Run it directly — no need to reimplement the pipeline.
 
 ```bash
 # whole folder, with originals backed up
-python scripts/season_style.py --season autumn --input ./assets --outdir ./out_autumn --backup
+uv run scripts/season_style.py --season autumn --input ./assets --outdir ./out_autumn --backup
 
 # specific files
-python scripts/season_style.py --season winter --input bg_a.png bg_b.png --outdir ./out_winter
+uv run scripts/season_style.py --season winter --input bg_a.webp bg_b.webp --outdir ./out_winter
 ```
 
 `--season` is one of `spring`, `summer`, `autumn`, `winter`. `--input` accepts
-files or a directory; `--outdir` is where restyled copies are written (originals
-are never modified in place).
+files or a directory (PNG / JPEG / WebP); `--outdir` is where restyled copies are
+written (originals are never modified in place). Output is always **lossless
+WebP** — e.g. `bg_a.png` in becomes `bg_a.webp` out — to match the game's assets.
 
 ## How each season reads
 
