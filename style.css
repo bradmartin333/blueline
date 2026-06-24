@@ -550,7 +550,7 @@ details.sec > summary.sec-label:hover { color: var(--ink); }
   .btn { font-size: 16px; padding: 14px 28px; }
   .btn-cast { font-size: 20px; padding: 14px 36px; }
   .btn-set { font-size: 22px; padding: 14px 36px; }
-  /* REEL IN is a secondary action — keep it smaller than MEND */
+  /* RESET is a secondary action — keep it smaller than MEND */
   .btn-ghost { font-size: 13px; padding: 9px 16px; }
 
   /* fight bar takes more width on mobile */
