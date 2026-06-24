@@ -12,23 +12,22 @@ const DATA = {};
 // deep     : down near the bottom
 DATA.DEPTHS = ['surface', 'film', 'shallow', 'deep'];
 
-// ---- Locations ----
-// Each location is a self-contained set of scene art under `dir`, plus a few
-// numbers that tell the engine how to drive it. To add a location, drop a folder
-// of art in assets/locations/<id>/ following the same file names and add an entry
-// here + to LOCATION_ORDER. With one location the in-game selector hides itself.
+// ---- Seasons ----
+// The same creek, fished across the four seasons. Only the BACKDROP art changes
+// season to season — the angler/rod foreground poses and the cast animation are
+// identical everywhere — so every season shares one drift config (cadence, focal
+// point, fly-line anchors) via SEASON_BASE and just points at its own art folder.
 //
-//   The cast animation (fg_cast_*.png + line_cast_*.png) is SHARED across locations
-//   in assets/cast/ — the first-person cast looks the same everywhere.
+//   The cast animation (fg_cast_*.png + line_cast_*.png) is SHARED across seasons
+//   in assets/cast/ — the first-person cast looks the same all year.
 //
-//   File layout per location (assets/locations/<id>/):
+//   File layout per season (assets/seasons/<id>/):
 //     bg_cast.png            — idle / casting backdrop (the still stream)
 //     bg_drift_0.png … _N    — drift backdrops, played in sequence as the fly
 //                              travels downstream (any number of frames)
 //     fg_drift.png           — foreground drift pose (rod held, NO baked fly line)
 //     fg_mend.png            — foreground mend pose (NO baked fly line)
-//     fg_set.png             — hookset close-up
-//     fg_pulled.png          — dramatic "broke you off" frame
+//     fg_set.png             — hookset close-up (also reused for the break-off flash)
 //
 //   driftFrames  : how many bg_drift_* frames exist.
 //   driftFrameMs : ms each drift backdrop holds before the cosmetic hard-cut.
@@ -40,22 +39,32 @@ DATA.DEPTHS = ['surface', 'film', 'shallow', 'deep'];
 //                  lure travels flyUp→flyDown — flyUp is where it lands (push it
 //                  toward the top of the frame to land it further from the angler /
 //                  further upstream); flyDown is where the drift ends, nearest you.
-DATA.LOCATIONS = {
-  appalachia: {
-    name: 'Appalachia',
-    blurb: 'Tight, tumbling freestone creek under a hardwood canopy.',
-    dir: 'assets/locations/appalachia',
-    driftFrames: 2,
-    driftFrameMs: 6500,          // bg hard-cut cadence (cosmetic)
-    driftTravelMs: 12000,        // how long the lure takes to float the full run
-    focalX: 0.42, focalY: 0.5,
-    line: {
-      drift: { rod: [0.239, 0.253], flyUp: [0.64, 0.70], flyDown: [0.21, 0.90], sag: 0.06 },
-      mend:  { rod: [0.265, 0.150], sag: 0.12 },
-    },
+const SEASON_BASE = {
+  driftFrames: 2,
+  driftFrameMs: 6500,          // bg hard-cut cadence (cosmetic)
+  driftTravelMs: 12000,        // how long the lure takes to float the full run
+  focalX: 0.42, focalY: 0.5,
+  line: {
+    drift: { rod: [0.239, 0.253], flyUp: [0.64, 0.70], flyDown: [0.21, 0.90], sag: 0.06 },
+    mend:  { rod: [0.265, 0.150], sag: 0.12 },
   },
 };
-DATA.LOCATION_ORDER = ['appalachia'];
+const seasonArt = (id) => `assets/seasons/${id}`;
+// hatches: what's coming off the water this season, keyed by time-of-day phase id.
+// This overrides each phase's default hatch so the bugs match the season — spring
+// BWOs, summer terrestrials, fall caddis, sparse winter midge days, etc. ('none' =
+// a searching / midge day with no clear hatch.)
+DATA.SEASONS = {
+  spring: { ...SEASON_BASE, name: 'Spring', blurb: 'Snowmelt swells the creek and the first mayflies ride the film.',  dir: seasonArt('spring'),
+    hatches: { dawn: 'none', morning: 'bwo', midday: 'bwo',         afternoon: 'stonefly',   evening: 'caddis', dusk: 'caddis' } },
+  summer: { ...SEASON_BASE, name: 'Summer', blurb: 'Low, clear water and terrestrials — long bright days, spooky fish.', dir: seasonArt('summer'),
+    hatches: { dawn: 'none', morning: 'pmd', midday: 'terrestrial', afternoon: 'terrestrial', evening: 'caddis', dusk: 'caddis' } },
+  autumn: { ...SEASON_BASE, name: 'Autumn', blurb: 'Hardwood canopy turning, browns coloring up and feeding hard.',     dir: seasonArt('autumn'),
+    hatches: { dawn: 'none', morning: 'bwo', midday: 'terrestrial', afternoon: 'bwo',        evening: 'caddis', dusk: 'caddis' } },
+  winter: { ...SEASON_BASE, name: 'Winter', blurb: 'Cold, slow flows under bare trees — tiny flies, deep drifts.',      dir: seasonArt('winter'),
+    hatches: { dawn: 'none', morning: 'none', midday: 'bwo',        afternoon: 'bwo',        evening: 'none',   dusk: 'none' } },
+};
+DATA.SEASON_ORDER = ['spring', 'summer', 'autumn', 'winter'];
 
 // ---- Hatches / available food ----
 // what the fish are keyed on. The active hatch shifts with time of day.
@@ -70,7 +79,7 @@ DATA.HATCHES = {
 
 // ---- Time-of-day phases. Conditions cycle through these. ----
 // feed: weighting of where fish are feeding (must overlap your rig depth)
-// hatch: the hatch most likely active this phase
+// hatch: fallback hatch for this phase (the active SEASON's `hatches` table wins)
 // light: 'low' | 'soft' | 'bright'
 // trophyLight: bonus to big-fish odds (low light = big browns move)
 DATA.PHASES = [

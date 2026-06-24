@@ -7,35 +7,34 @@
 const A = DATA;
 const $ = (id) => document.getElementById(id);
 
-// ---------------- locations & asset paths ----------------
-let LOC_ID = localStorage.getItem('bl_location') || A.LOCATION_ORDER[0];
-if (!A.LOCATIONS[LOC_ID]) LOC_ID = A.LOCATION_ORDER[0];
-let LOC = A.LOCATIONS[LOC_ID];
+// ---------------- seasons & asset paths ----------------
+let SEASON_ID = localStorage.getItem('bl_season') || A.SEASON_ORDER[0];
+if (!A.SEASONS[SEASON_ID]) SEASON_ID = A.SEASON_ORDER[0];
+let SEASON = A.SEASONS[SEASON_ID];
 
 // The cast animation (angler + rod + line mask) is the same first-person action in
-// every location, so it lives in one shared folder rather than being duplicated.
+// every season, so it lives in one shared folder rather than being duplicated.
 const CAST_DIR = 'assets/cast';
 const CAST_FRAMES = 4;
 
-// resolve every scene asset for a location from its manifest (counts → file names)
-function buildPaths(loc) {
-  const d = loc.dir;
+// resolve every scene asset for a season from its manifest (counts → file names)
+function buildPaths(season) {
+  const d = season.dir;
   return {
     castBg:  `${d}/bg_cast.png`,
-    driftBg: Array.from({ length: loc.driftFrames }, (_, i) => `${d}/bg_drift_${i}.png`),
+    driftBg: Array.from({ length: season.driftFrames }, (_, i) => `${d}/bg_drift_${i}.png`),
     cast:    Array.from({ length: CAST_FRAMES }, (_, i) => `${CAST_DIR}/fg_cast_${i}.png`),
     castLine: Array.from({ length: CAST_FRAMES }, (_, i) => `${CAST_DIR}/line_cast_${i}.png`),
     drift:   `${d}/fg_drift.png`,
     mend:    `${d}/fg_mend.png`,
     set:     `${d}/fg_set.png`,
-    pulled:  `${d}/fg_pulled.png`,
   };
 }
-let IMG = buildPaths(LOC);
+let IMG = buildPaths(SEASON);
 
 const FISH_IMGS = A.SPECIES_ORDER.map(id => A.SPECIES[id].img);
-// flat list of one location's scene images, for preloading
-const locImageList = (img) => [img.castBg, ...img.driftBg, ...img.cast, ...img.castLine, img.drift, img.mend, img.set, img.pulled];
+// flat list of one season's scene images, for preloading
+const locImageList = (img) => [img.castBg, ...img.driftBg, ...img.cast, ...img.castLine, img.drift, img.mend, img.set];
 
 // ---------------- DOM ----------------
 const bg = $('background'), bg2 = $('background2'), fg = $('foreground');
@@ -129,7 +128,7 @@ function setBackground(src, fade) {
 const lerp = (a, b, t) => a + (b - a) * t;
 const SW_STAGE = 1472, SH_STAGE = 704;
 
-let lineAnchors = null;   // current LOC.line[state] entry
+let lineAnchors = null;   // current SEASON.line[state] entry
 let lineRAF = null;
 let lineJerk = 0;         // 0..1 transient that pulls the line taut on a strike
 let mendBow = 0;          // 0..1 transient that flips the line's arc upstream after a mend
@@ -169,7 +168,7 @@ function updateLineColor() {
 }
 
 function showFlyLine(which) {
-  lineAnchors = (LOC.line && (LOC.line[which] || LOC.line.drift)) || null;
+  lineAnchors = (SEASON.line && (SEASON.line[which] || SEASON.line.drift)) || null;
   if (!lineAnchors) { hideFlyLine(); return; }
   updateFlyMarker();
   updateLineColor();
@@ -188,7 +187,7 @@ function drawFlyLine(now) {
   // fly position: during the drift it slides upstream→downstream with the segment.
   // Driven from the drift anchors even while the mend pose is showing, so a mend
   // visibly throws the fly back upstream.
-  const dl = LOC.line && LOC.line.drift;
+  const dl = SEASON.line && SEASON.line.drift;
   let flyN;
   if (drifting && dl && dl.flyUp && dl.flyDown) {
     const s = Math.max(0, Math.min(1, driftProgress));   // lure floats downstream (carries thru bg cuts)
@@ -230,8 +229,10 @@ function rollWater() {
 function applyPhase() {
   const p = A.PHASES[cond.phaseIdx];
   cond.light = p.light;
-  // hatch mostly follows the phase, with a chance of "searching"
-  cond.hatch = Math.random() < 0.78 ? p.hatch : 'none';
+  // the season decides which bug is on for this phase; fall back to the phase default
+  const seasonHatch = (SEASON.hatches && SEASON.hatches[p.id]) || p.hatch;
+  // hatch mostly follows the season/phase, with a chance of "searching"
+  cond.hatch = Math.random() < 0.78 ? seasonHatch : 'none';
   paintLight();
   renderReport();
   renderMatch();
@@ -472,8 +473,8 @@ function resize() {
     // so the fisherman/fly stay large instead of shrinking into a wide strip.
     scale = Math.max(ww / SW, wh / SH);
     const sw = SW * scale, sh = SH * scale;
-    const fx = LOC.focalX != null ? LOC.focalX : 0.5;
-    const fy = LOC.focalY != null ? LOC.focalY : 0.5;
+    const fx = SEASON.focalX != null ? SEASON.focalX : 0.5;
+    const fy = SEASON.focalY != null ? SEASON.focalY : 0.5;
     tx = (0.5 - fx) * sw;
     ty = (0.5 - fy) * sh;
     const maxX = Math.max(0, (sw - ww) / 2), maxY = Math.max(0, (sh - wh) / 2);
@@ -604,9 +605,9 @@ function startDriftFrames() {
 }
 function tickDrift(dt, now) {
   // the lure floats steadily downstream — continuous, and carries straight through bg cuts
-  driftProgress = Math.min(1, driftProgress + dt * 1000 / (LOC.driftTravelMs || 12000));
+  driftProgress = Math.min(1, driftProgress + dt * 1000 / (SEASON.driftTravelMs || 12000));
   // angler pan + bg frame cuts — cosmetic only; they never touch the drag/lure state
-  const segSec = (LOC.driftFrameMs || 6500) / 1000;
+  const segSec = (SEASON.driftFrameMs || 6500) / 1000;
   if (driftFrameIdx < IMG.driftBg.length - 1) {
     panSeg += dt / segSec;
     if (panSeg >= 1) {
@@ -947,13 +948,10 @@ function loseFish(dramatic) {
   saveJournal();
   AUDIO.play('fail');
   if (dramatic) {
-    // the big one pulls you off the rock — stays in-game, no redirect
-    bg.style.display = 'none'; bg2.style.display = 'none';
-    fg.style.display = 'block';
-    fg.src = IMG.pulled; void fg.offsetWidth;
+    // the big one bulldogs and breaks you off — a beat of drama before the verdict
     fg.classList.add('shake');
     setTimeout(() => {
-      fg.classList.remove('shake'); bg.style.display = ''; bg2.style.display = '';
+      fg.classList.remove('shake');
       showLost('It bulldogged for the logjam and broke you off.', 'SNAP!');
     }, 1300);
   } else {
@@ -1052,34 +1050,35 @@ function renderJournal() {
 }
 
 // =========================================================
-//  LOCATIONS — selector (hidden unless there's more than one)
+//  SEASONS — slider selector (hidden unless there's more than one)
 // =========================================================
-function renderLocations() {
-  const sec = $('loc-section'), wrap = $('loc-list');
-  if (A.LOCATION_ORDER.length <= 1) { sec.classList.add('hidden'); return; }
+function renderSeasons() {
+  const sec = $('season-section'), range = $('season-range');
+  if (!sec || !range) return;
+  if (A.SEASON_ORDER.length <= 1) { sec.classList.add('hidden'); return; }
   sec.classList.remove('hidden');
-  wrap.innerHTML = '';
-  A.LOCATION_ORDER.forEach(id => {
-    const l = A.LOCATIONS[id];
-    const b = document.createElement('button');
-    b.className = 'opt' + (LOC_ID === id ? ' sel' : '');
-    b.innerHTML = `<div class="o-row"><span class="o-name">${l.name}</span></div>
-      ${l.blurb ? `<div class="o-note">${l.blurb}</div>` : ''}`;
-    b.onclick = () => setLocation(id);
-    wrap.appendChild(b);
-  });
+  range.max = A.SEASON_ORDER.length - 1;
+  range.value = A.SEASON_ORDER.indexOf(SEASON_ID);
+  $('season-name').textContent = SEASON.name;
+  $('season-blurb').textContent = SEASON.blurb || '';
 }
 
-async function setLocation(id) {
-  if (!A.LOCATIONS[id] || id === LOC_ID) return;
-  LOC_ID = id; LOC = A.LOCATIONS[id]; IMG = buildPaths(LOC);
-  localStorage.setItem('bl_location', id);
+async function setSeason(id) {
+  if (!A.SEASONS[id] || id === SEASON_ID) return;
+  SEASON_ID = id; SEASON = A.SEASONS[id]; IMG = buildPaths(SEASON);
+  localStorage.setItem('bl_season', id);
   AUDIO.play('strip');
   await preload(locImageList(IMG));      // have the new scene decoded before showing it
-  renderLocations();
-  toIdle();                              // reset the scene to the new location
+  renderSeasons();
+  applyPhase();                          // refresh the hatch/report for the new season
+  toIdle();                              // reset the scene to the new season
   resize();
 }
+// dragging the slider snaps to the nearest season
+$('season-range').addEventListener('input', (e) => {
+  const id = A.SEASON_ORDER[+e.target.value];
+  if (id) setSeason(id);
+});
 
 // =========================================================
 //  WIRING
@@ -1092,6 +1091,15 @@ reelBtn.onclick = reelIn;
 releaseBtn.onclick = () => { hideAudioNudge(); toIdle(); $('reveal-size').classList.remove('hidden'); revImg.style.display = ''; };
 $('picker-scrim').onclick = closePicker;
 $('picker-close').onclick = closePicker;
+
+// collapsible tackle sections — remember open/closed across reloads
+['sec-rod', 'sec-rig', 'sec-flies'].forEach(id => {
+  const d = $(id); if (!d) return;
+  const key = 'bl_' + id;
+  const saved = localStorage.getItem(key);
+  if (saved != null) d.open = saved === '1';
+  d.addEventListener('toggle', () => localStorage.setItem(key, d.open ? '1' : '0'));
+});
 
 // keyboard: space = primary action
 window.addEventListener('keydown', (ev) => {
@@ -1137,7 +1145,7 @@ async function init() {
   applyPhase();
 
   renderRods(); renderRigs(); renderSlots(); renderMatch(); renderJournal();
-  renderLocations();
+  renderSeasons();
   updateFlyMarker(); updateLineColor();
 
   // audio default: muted unless user previously turned it on

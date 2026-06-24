@@ -87,9 +87,17 @@
       <!-- TACKLE PANE -->
       <div class="tab-pane active" id="pane-tackle">
 
-        <div id="loc-section" class="hidden">
-          <div class="sec-label">LOCATION</div>
-          <div id="loc-list"></div>
+        <div id="season-section" class="hidden">
+          <div class="season-slider">
+            <input id="season-range" type="range" min="0" max="3" step="1" value="0" aria-label="Season">
+            <div class="season-ticks">
+              <span>Spring</span><span>Summer</span><span>Autumn</span><span>Winter</span>
+            </div>
+            <div class="season-cur">
+              <span class="season-name" id="season-name">Spring</span>
+              <span class="season-blurb" id="season-blurb"></span>
+            </div>
+          </div>
         </div>
 
         <div id="report">
@@ -114,18 +122,20 @@
           <div class="m-note" id="match-note">Set up your rig to read the water.</div>
         </div>
 
-        <div class="sec-label">ROD &amp; ACTION</div>
-        <div id="rod-list"></div>
+        <details class="sec" id="sec-rod">
+          <summary class="sec-label">ROD &amp; ACTION</summary>
+          <div id="rod-list"></div>
+        </details>
 
-        <div class="sec-label">RIG</div>
-        <div id="rig-list"></div>
+        <details class="sec" id="sec-rig">
+          <summary class="sec-label">RIG</summary>
+          <div id="rig-list"></div>
+        </details>
 
-        <div class="sec-label">FLIES</div>
-        <div id="slot-list"></div>
-
-        <div class="tackle-hint">
-          <b>Tip:</b> match your fly to the hatch, present it where fish are feeding, and keep a <b>drag-free drift</b> — mend the moment the meter drops.
-        </div>
+        <details class="sec" id="sec-flies">
+          <summary class="sec-label">FLIES</summary>
+          <div id="slot-list"></div>
+        </details>
       </div>
 
       <!-- JOURNAL PANE -->

@@ -344,6 +344,18 @@ button { font-family: var(--font-display); cursor: pointer; }
 .sec-label::after { content: ''; flex: 1; height: 1px; background: rgba(33,29,20,0.18); }
 .sec-label:first-child { margin-top: 0; }
 
+/* collapsible tackle sections */
+details.sec { margin: 14px 0 0; }
+details.sec > summary.sec-label { margin: 0 0 10px; padding: 4px 0; cursor: pointer; list-style: none; -webkit-user-select: none; user-select: none; }
+details.sec > summary.sec-label::-webkit-details-marker { display: none; }
+details.sec > summary.sec-label::before {
+  content: ''; flex: 0 0 auto; width: 6px; height: 6px; margin-right: 2px; opacity: 0.85;
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg); transition: transform 0.15s ease;
+}
+details.sec[open] > summary.sec-label::before { transform: rotate(45deg); }
+details.sec > summary.sec-label:hover { color: var(--ink); }
+
 /* stream report card */
 #report {
   background: var(--ink); color: var(--paper); border-radius: 5px; padding: 13px 14px;
@@ -385,6 +397,37 @@ button { font-family: var(--font-display); cursor: pointer; }
 .opt .o-note { font-family: var(--font-mono); font-size: 11px; line-height: 1.45; color: var(--ink-soft); margin-top: 4px; }
 .opt .o-tag { display: inline-block; font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.1em;
   background: var(--olive); color: #f3f4dd; padding: 2px 7px; border-radius: 10px; margin-top: 6px; }
+
+/* season slider */
+#season-section { margin-bottom: 16px; }
+.season-slider {
+  background: var(--paper-2); border: 2px solid rgba(33,29,20,0.2);
+  border-radius: 5px; padding: 12px 14px 11px;
+}
+#season-range {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 4px; border-radius: 3px; cursor: pointer;
+  background: linear-gradient(90deg, var(--olive), var(--gold), var(--rust), var(--ink-soft));
+  outline: none;
+}
+#season-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--paper); border: 2px solid var(--rust);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.35); cursor: pointer;
+}
+#season-range::-moz-range-thumb {
+  width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--rust);
+  background: var(--paper); box-shadow: 0 1px 3px rgba(0,0,0,0.35); cursor: pointer;
+}
+.season-ticks {
+  display: flex; justify-content: space-between; margin-top: 7px;
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.1em;
+  color: var(--ink-faint);
+}
+.season-cur { margin-top: 8px; padding-top: 8px; border-top: var(--hair); }
+.season-cur .season-name { font-family: var(--font-display); font-weight: 700; font-size: 15.5px; color: var(--ink); }
+.season-cur .season-blurb { display: block; font-family: var(--font-mono); font-size: 11px; line-height: 1.45; color: var(--ink-soft); margin-top: 3px; }
 
 /* fly slots */
 .fly-slot {
@@ -453,10 +496,6 @@ button { font-family: var(--font-display); cursor: pointer; }
 .jr-summary .row .v { font-family: var(--font-display); font-weight: 700; }
 .jr-summary .row .v.gold { color: var(--gold); }
 .jr-record { text-align: center; font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); margin-top: 14px; letter-spacing: 0.08em; }
-
-.tackle-hint { font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); line-height: 1.5; margin-top: 14px;
-  border-top: var(--hair); padding-top: 12px; }
-.tackle-hint b { color: var(--ink); font-family: var(--font-mono); }
 
 /* utility */
 .hidden { display: none !important; }
