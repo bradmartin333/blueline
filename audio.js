@@ -34,6 +34,11 @@ const AUDIO = (function () {
   // burbleGain   : volume of the burble layer
   // wind         : whether to run the wind/gust layer
   // cicadas      : whether to run the cicada layer
+
+  // Master birdsong volume — one knob scaling every season's birdGain.
+  // Lower = quieter chirps; 1 = the original per-season levels.
+  const BIRD_VOLUME = 0.03;
+
   const SEASON_AMB = {
     spring: {
       birdInterval: [2500, 8000], birdPitch: [2600, 4400], birdGain: 0.14, birdNotes: [1, 3],
@@ -250,7 +255,7 @@ const AUDIO = (function () {
       o.start(t); o.stop(t + 0.13);
     }
     g.gain.setValueAtTime(0, t0);
-    g.gain.linearRampToValueAtTime(cfg.birdGain, t0 + 0.02);
+    g.gain.linearRampToValueAtTime(cfg.birdGain * BIRD_VOLUME, t0 + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0005, t0 + notes * 0.16 + 0.15);
   }
 
