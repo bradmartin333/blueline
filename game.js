@@ -8,7 +8,26 @@ const A = DATA;
 const $ = (id) => document.getElementById(id);
 
 // ---------------- seasons & asset paths ----------------
-let SEASON_ID = localStorage.getItem('bl_season') || A.SEASON_ORDER[0];
+// map the player's real-world month → the matching season (northern hemisphere)
+function currentSeasonId() {
+  const m = new Date().getMonth();           // 0 = Jan
+  if (m <= 1 || m === 11) return 'winter';   // Dec, Jan, Feb
+  if (m <= 4) return 'spring';               // Mar, Apr, May
+  if (m <= 7) return 'summer';               // Jun, Jul, Aug
+  return 'autumn';                           // Sep, Oct, Nov
+}
+// map the player's real-world hour → the closest time-of-day phase
+function currentPhaseIdx() {
+  const h = new Date().getHours();
+  const id = h < 5 ? 'dusk' : h < 7 ? 'dawn' : h < 11 ? 'morning'
+    : h < 14 ? 'midday' : h < 17 ? 'afternoon' : h < 20 ? 'evening' : 'dusk';
+  const i = A.PHASES.findIndex(p => p.id === id);
+  return i < 0 ? 0 : i;
+}
+
+// always open in the player's real-world season; the slider is a within-session
+// explorer (its choice is intentionally not restored across reloads).
+let SEASON_ID = currentSeasonId();
 if (!A.SEASONS[SEASON_ID]) SEASON_ID = A.SEASON_ORDER[0];
 let SEASON = A.SEASONS[SEASON_ID];
 
@@ -1518,8 +1537,8 @@ function hideAudioNudge() { const n = $('audio-nudge'); if (n) n.style.display =
 //  INIT
 // =========================================================
 async function init() {
-  // start at a random time of day, weighted toward fishy hours
-  cond.phaseIdx = [0, 1, 4, 5, 1, 4][Math.floor(Math.random() * 6)];
+  // start at the player's real-world time of day
+  cond.phaseIdx = currentPhaseIdx();
   rollWater();
   applyPhase();
 
