@@ -1068,6 +1068,7 @@ async function setSeason(id) {
   SEASON_ID = id; SEASON = A.SEASONS[id]; IMG = buildPaths(SEASON);
   localStorage.setItem('bl_season', id);
   AUDIO.play('strip');
+  AUDIO.setSeason(id);
   await preload(locImageList(IMG));      // have the new scene decoded before showing it
   renderSeasons();
   applyPhase();                          // refresh the hatch/report for the new season
@@ -1147,6 +1148,9 @@ async function init() {
   renderRods(); renderRigs(); renderSlots(); renderMatch(); renderJournal();
   renderSeasons();
   updateFlyMarker(); updateLineColor();
+
+  // prime audio with the starting season (before unlock, so startAmbient picks it up)
+  AUDIO.setSeason(SEASON_ID);
 
   // audio default: muted unless user previously turned it on
   const pref = localStorage.getItem('bl_muted');

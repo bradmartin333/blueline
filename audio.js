@@ -2,6 +2,7 @@
 //  AUDIO — fully procedural (WebAudio). No asset files.
 //  Ambient stream + birdsong loop, plus cast/splash/reel SFX.
 //  Muted by default; unlocked on first gesture.
+//  Call AUDIO.setSeason(id) to shift the ambient to match.
 // ============================================================
 
 const AUDIO = (function () {
@@ -12,6 +13,49 @@ const AUDIO = (function () {
   let started = false;
   let birdTimer = null;
   let noiseBuffer = null;
+
+  // refs to rampable nodes — set in startAmbient()
+  let waterLPNode = null;
+  let waterGNode  = null;
+  let burbleGNode = null;
+  let windGain       = null;   // null when wind layer isn't running
+  let cicadaGain     = null;   // null when cicada layer isn't running
+  let cicadaBurstTimer = null; // setTimeout handle for burst scheduling
+
+  let currentSeason = 'spring';
+
+  // ---- Per-season ambient config ----
+  // birdInterval : [minMs, maxMs] between chirps
+  // birdPitch    : [minHz, maxHz] base frequency range
+  // birdGain     : peak chirp volume
+  // birdNotes    : [min, max] notes per chirp
+  // waterLP      : lowpass cutoff for the water hiss (higher = brighter/fuller)
+  // waterGain    : volume of the water hiss layer
+  // burbleGain   : volume of the burble layer
+  // wind         : whether to run the wind/gust layer
+  // cicadas      : whether to run the cicada layer
+  const SEASON_AMB = {
+    spring: {
+      birdInterval: [2500, 8000], birdPitch: [2600, 4400], birdGain: 0.14, birdNotes: [1, 3],
+      waterLP: 1200, waterGain: 0.23, burbleGain: 0.11,
+      wind: false, cicadas: false,
+    },
+    summer: {
+      birdInterval: [1200, 4500], birdPitch: [2800, 4800], birdGain: 0.15, birdNotes: [2, 4],
+      waterLP: 1000, waterGain: 0.18, burbleGain: 0.09,
+      wind: false, cicadas: true,
+    },
+    autumn: {
+      birdInterval: [6000, 18000], birdPitch: [1800, 3200], birdGain: 0.09, birdNotes: [1, 2],
+      waterLP: 950, waterGain: 0.20, burbleGain: 0.09,
+      wind: true, cicadas: false,
+    },
+    winter: {
+      birdInterval: [18000, 45000], birdPitch: [1600, 2400], birdGain: 0.07, birdNotes: [1, 1],
+      waterLP: 800, waterGain: 0.17, burbleGain: 0.07,
+      wind: true, cicadas: false,
+    },
+  };
 
   function ensureCtx() {
     if (ctx) return;
@@ -40,6 +84,8 @@ const AUDIO = (function () {
   function startAmbient() {
     if (started) return;
     started = true;
+    const cfg = SEASON_AMB[currentSeason] || SEASON_AMB.spring;
+
     ambGain = ctx.createGain();
     ambGain.gain.value = 0.0;
     ambGain.connect(master);
@@ -47,10 +93,10 @@ const AUDIO = (function () {
     // Layer 1 — broadband water hiss (lowpassed brown noise)
     const water = ctx.createBufferSource();
     water.buffer = noiseBuffer; water.loop = true;
-    const waterLP = ctx.createBiquadFilter();
-    waterLP.type = 'lowpass'; waterLP.frequency.value = 1100; waterLP.Q.value = 0.4;
-    const waterG = ctx.createGain(); waterG.gain.value = 0.22;
-    water.connect(waterLP).connect(waterG).connect(ambGain);
+    waterLPNode = ctx.createBiquadFilter();
+    waterLPNode.type = 'lowpass'; waterLPNode.frequency.value = cfg.waterLP; waterLPNode.Q.value = 0.4;
+    waterGNode = ctx.createGain(); waterGNode.gain.value = cfg.waterGain;
+    water.connect(waterLPNode).connect(waterGNode).connect(ambGain);
     water.start();
 
     // Layer 2 — burble: bandpassed noise with a slowly wandering center freq
@@ -58,10 +104,9 @@ const AUDIO = (function () {
     burble.buffer = noiseBuffer; burble.loop = true;
     const bp = ctx.createBiquadFilter();
     bp.type = 'bandpass'; bp.frequency.value = 420; bp.Q.value = 1.6;
-    const burbleG = ctx.createGain(); burbleG.gain.value = 0.10;
-    burble.connect(bp).connect(burbleG).connect(ambGain);
+    burbleGNode = ctx.createGain(); burbleGNode.gain.value = cfg.burbleGain;
+    burble.connect(bp).connect(burbleGNode).connect(ambGain);
     burble.start();
-    // wander the burble filter
     const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 0.13;
     const lfoG = ctx.createGain(); lfoG.gain.value = 180;
     lfo.connect(lfoG).connect(bp.frequency); lfo.start();
@@ -69,12 +114,115 @@ const AUDIO = (function () {
     // fade the bed in
     ambGain.gain.linearRampToValueAtTime(0.9, ctx.currentTime + 2.5);
 
+    // start any layers the current season calls for
+    if (cfg.cicadas) startCicadas();
+    if (cfg.wind)    startWind();
+
     scheduleBird();
   }
 
-  // ---------- Birdsong: occasional sweet chirps ----------
+  // ---------- Wind / gust layer (autumn + winter) ----------
+  function startWind() {
+    if (windGain || !ctx) return;
+    windGain = ctx.createGain();
+    windGain.gain.value = 0;
+    windGain.connect(ambGain || master);
+
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer; src.loop = true;
+    const filt = ctx.createBiquadFilter();
+    filt.type = 'bandpass';
+    // winter = colder, higher-pitched; autumn = warmer, lower
+    filt.frequency.value = currentSeason === 'winter' ? 900 : 600;
+    filt.Q.value = 0.6;
+    src.connect(filt).connect(windGain);
+    src.start();
+
+    // slow gust LFO on gain
+    const gustLFO = ctx.createOscillator();
+    gustLFO.type = 'sine'; gustLFO.frequency.value = 0.07;
+    const gustDepth = ctx.createGain();
+    gustDepth.gain.value = currentSeason === 'winter' ? 0.06 : 0.04;
+    gustLFO.connect(gustDepth).connect(windGain.gain);
+    gustLFO.start();
+
+    // filter pitch wander
+    const pitchLFO = ctx.createOscillator();
+    pitchLFO.type = 'sine'; pitchLFO.frequency.value = 0.05;
+    const pitchDepth = ctx.createGain();
+    pitchDepth.gain.value = 200;
+    pitchLFO.connect(pitchDepth).connect(filt.frequency);
+    pitchLFO.start();
+
+    // fade in
+    windGain.gain.linearRampToValueAtTime(currentSeason === 'winter' ? 0.10 : 0.07, ctx.currentTime + 3);
+  }
+
+  function stopWind() {
+    if (!windGain) return;
+    const t = ctx.currentTime;
+    windGain.gain.linearRampToValueAtTime(0, t + 2);
+    const ref = windGain;
+    setTimeout(() => { try { ref.disconnect(); } catch (_) {} }, 2500);
+    windGain = null;
+  }
+
+  // ---------- Cicada layer (summer) — short bursts, long silences ----------
+  function startCicadas() {
+    if (cicadaGain || !ctx) return;
+    cicadaGain = ctx.createGain();
+    cicadaGain.gain.value = 0;
+    cicadaGain.connect(ambGain || master);
+
+    // Two slightly detuned sine oscillators — sine is far gentler than sawtooth
+    [3420, 3680].forEach(freq => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine'; osc.frequency.value = freq;
+      const amLFO = ctx.createOscillator();
+      amLFO.type = 'sine'; amLFO.frequency.value = 18 + Math.random() * 8;
+      const amDepth = ctx.createGain(); amDepth.gain.value = 0.35;
+      const amCarrier = ctx.createGain(); amCarrier.gain.value = 0.5;
+      amLFO.connect(amDepth).connect(amCarrier.gain);
+      amLFO.start();
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = 2.5;
+      osc.connect(bp).connect(amCarrier).connect(cicadaGain);
+      osc.start();
+    });
+
+    scheduleCicadaBurst();
+  }
+
+  function scheduleCicadaBurst() {
+    if (!cicadaGain) return;
+    // burst: 1–3 s of sound, then silence for 45–65 s
+    const burstSec = 1 + Math.random() * 2;
+    const t = ctx.currentTime;
+    cicadaGain.gain.cancelScheduledValues(t);
+    cicadaGain.gain.linearRampToValueAtTime(0.022, t + 0.3);
+    cicadaGain.gain.setValueAtTime(0.022, t + 0.3 + burstSec);
+    cicadaGain.gain.linearRampToValueAtTime(0, t + 0.3 + burstSec + 0.4);
+    const silenceMs = (45 + Math.random() * 20) * 1000;
+    cicadaBurstTimer = setTimeout(scheduleCicadaBurst, (burstSec + 0.7) * 1000 + silenceMs);
+  }
+
+  function stopCicadas() {
+    if (!cicadaGain) return;
+    clearTimeout(cicadaBurstTimer); cicadaBurstTimer = null;
+    const t = ctx.currentTime;
+    cicadaGain.gain.cancelScheduledValues(t);
+    cicadaGain.gain.linearRampToValueAtTime(0, t + 0.4);
+    const ref = cicadaGain;
+    setTimeout(() => { try { ref.disconnect(); } catch (_) {} }, 1000);
+    cicadaGain = null;
+  }
+
+  // ---------- Birdsong: occasional chirps, tuned per season ----------
   function scheduleBird() {
-    const next = 3500 + Math.random() * 9000;
+    clearTimeout(birdTimer);
+    const cfg = SEASON_AMB[currentSeason] || SEASON_AMB.spring;
+    const [minMs, maxMs] = cfg.birdInterval;
+    const next = minMs + Math.random() * (maxMs - minMs);
     birdTimer = setTimeout(() => {
       if (started) chirp();
       scheduleBird();
@@ -82,9 +230,12 @@ const AUDIO = (function () {
   }
 
   function chirp() {
+    const cfg = SEASON_AMB[currentSeason] || SEASON_AMB.spring;
+    const [minN, maxN] = cfg.birdNotes;
+    const [minP, maxP] = cfg.birdPitch;
     const t0 = ctx.currentTime;
-    const notes = 1 + Math.floor(Math.random() * 3);
-    const base = 2200 + Math.random() * 1600;
+    const notes = minN + Math.floor(Math.random() * (maxN - minN + 1));
+    const base = minP + Math.random() * (maxP - minP);
     const g = ctx.createGain();
     g.gain.value = 0; g.connect(ambGain || master);
     for (let n = 0; n < notes; n++) {
@@ -99,7 +250,7 @@ const AUDIO = (function () {
       o.start(t); o.stop(t + 0.13);
     }
     g.gain.setValueAtTime(0, t0);
-    g.gain.linearRampToValueAtTime(0.12, t0 + 0.02);
+    g.gain.linearRampToValueAtTime(cfg.birdGain, t0 + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0005, t0 + notes * 0.16 + 0.15);
   }
 
@@ -166,7 +317,6 @@ const AUDIO = (function () {
   };
 
   return {
-    // call from a user gesture
     unlock() {
       ensureCtx();
       if (ctx.state === 'suspended') ctx.resume();
@@ -181,6 +331,31 @@ const AUDIO = (function () {
     play(name, arg) {
       if (!ctx || muted) return;
       if (SFX[name]) SFX[name](arg);
+    },
+    setSeason(id) {
+      if (!SEASON_AMB[id] || id === currentSeason) return;
+      const prev = SEASON_AMB[currentSeason];
+      currentSeason = id;
+      const cfg = SEASON_AMB[id];
+
+      // reschedule birds immediately with new cadence/pitch
+      if (started) scheduleBird();
+
+      // ramp water character
+      if (waterLPNode && waterGNode && burbleGNode && ctx) {
+        const t = ctx.currentTime;
+        waterLPNode.frequency.linearRampToValueAtTime(cfg.waterLP, t + 3);
+        waterGNode.gain.linearRampToValueAtTime(cfg.waterGain, t + 3);
+        burbleGNode.gain.linearRampToValueAtTime(cfg.burbleGain, t + 3);
+      }
+
+      if (!started) return;  // layers will be started in startAmbient() when audio unlocks
+
+      // start/stop seasonal layers
+      if (cfg.cicadas && !cicadaGain) startCicadas();
+      if (!cfg.cicadas && cicadaGain)  stopCicadas();
+      if (cfg.wind && !windGain)  startWind();
+      if (!cfg.wind && windGain)  stopWind();
     },
   };
 })();
