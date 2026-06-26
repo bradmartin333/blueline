@@ -24,6 +24,28 @@ so there's no `npm test` to lean on. Validation is done from Python, run through
 - **Playwright** (Chromium) — to actually load `index.html`, catch console
   errors / page errors, and drive the new feature through the real DOM.
 
+## Prerequisites: `uv` must be installed
+
+Everything here — and the seasonal styler, and the `PreToolUse` guard hook in
+`.claude/settings.json` — assumes `uv` is on `PATH`. Check with `uv --version`.
+If you get `uv: command not found`, install it (no `pip`, no system Python
+needed — it's a standalone binary):
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# macOS, via Homebrew
+brew install uv
+
+# Windows (PowerShell)
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+The install script drops `uv` in `~/.local/bin`; open a new shell (or `source`
+your profile) so it's picked up. Nothing else to set up — `uv run --with …`
+builds throwaway envs on demand from there.
+
 ## Hard rules (Python in this repo)
 
 These are non-negotiable and apply to *every* Python command you run here, not

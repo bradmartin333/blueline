@@ -1,0 +1,25 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=\"$(jq -r '.tool_input.command // empty')\"; msg='Blocked by CLAUDE.md / uv-validation skill: all Python goes through uv into a throwaway venv. Use: uv run script.py, or uv run --with <pkg> python ... for deps. Never invoke python/pip/pipx/virtualenv directly, and never uv pip install / uv sync / uv add -- validation deps stay ephemeral (no committed .venv or requirements.txt).'; nouv='uv is not installed, but this repo needs it for all Python (validation, the seasonal styler). Install it:  macOS/Linux: curl -LsSf https://astral.sh/uv/install.sh | sh  |  Homebrew: brew install uv  |  Windows: powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\". See the uv-validation skill / CLAUDE.md.'; case \"$cmd\" in 'uv '*|*' uv '*|*python*|*' pip '*|'pip '*) command -v uv >/dev/null 2>&1 || { echo \"$nouv\" >&2; exit 2; } ;; esac; case \"$cmd\" in 'uv run '*|'uv tool '*) exit 0 ;; esac; case \"$cmd\" in *'uv pip install'*|*'uv sync'*|*'uv add'*|*virtualenv*|*'-m venv'*) echo \"$msg\" >&2; exit 2 ;; esac; lead=\"$(printf '%s' \"$cmd\" | awk '{for(i=1;i<=NF;i++){if($i ~ /^[A-Za-z_][A-Za-z0-9_]*=/)continue; print $i; exit}}')\"; case \"$lead\" in python|python3|pip|pip3|pipx) echo \"$msg\" >&2; exit 2 ;; esac"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null || exit 0; pkill -f 'http.server' 2>/dev/null; if command -v uv >/dev/null 2>&1; then for f in game.js data.js audio.js; do git diff --quiet -- \"$f\" 2>/dev/null && git diff --cached --quiet -- \"$f\" 2>/dev/null && continue; [ -f \"$f\" ] || continue; uv run --with esprima python -c \"import esprima,sys; esprima.parseScript(open(sys.argv[1]).read())\" \"$f\" >/dev/null 2>&1 || echo \"[esprima] syntax error in $f -- run the uv-validation skill for details\" >&2; done; fi; st=\"$(git status --short)\"; if [ -n \"$st\" ]; then echo \"git status --short (cruft-cleanup gate -- every line should be explainable by the task):\" >&2; echo \"$st\" >&2; fi; exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}

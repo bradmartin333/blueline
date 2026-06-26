@@ -15,7 +15,15 @@ given task.
     (or rely on the script's PEP 723 `# /// script` inline metadata, which
     `uv run` installs automatically).
   - REPL / module: `uv run python`, `uv run -m <module>`.
-  - Manage deps/tools: `uv add`, `uv sync`, `uv tool install`.
+  - Pull in deps **ephemerally** with `uv run --with <pkg>` (or PEP 723). Do
+    **not** `uv add` / `uv sync` / `uv pip install` into the repo — there is no
+    committed venv or `requirements.txt` and there must not be one (see the
+    `uv-validation` skill). A `PreToolUse` hook in `.claude/settings.json`
+    enforces this.
+  - **`uv` must be installed.** If `uv: command not found`:
+    - macOS / Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+    - Homebrew: `brew install uv`
+    - Windows: `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`
 
 ## Skills
 
