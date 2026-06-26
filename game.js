@@ -95,6 +95,9 @@ let biteFlash = null;
 let catchStreak = 0;          // consecutive lands without losing a hooked fish
 let daySpecies = {};          // species landed since the last dawn (for the day-slam)
 let lastCatch = null;         // snapshot of the most recent landed fish (for the trophy card)
+let tackleWasRolled = false;  // did the dice set the current loadout? (for the Lucky Roll badge)
+let perfectCastStreak = 0;    // consecutive perfect casts (for the Perfectionist badge)
+let castLuck = 1;             // bite-chance multiplier earned from the cast-timing meter (1 = none)
 
 // ---------------- persistence ----------------
 const LSK = 'bl_journal_v1';
@@ -411,6 +414,14 @@ function renderMatch() {
 // =========================================================
 //  TACKLE UI
 // =========================================================
+// the loadout is committed the moment a cast starts — rod, rig and flies can only
+// be changed while idle (between casts), never mid-cast/drift/fight/reveal.
+function tackleLocked() { return state !== ST.IDLE; }
+
+// reflect the locked state on the panel so the controls look (and feel) inert
+// while a cast is in flight — pointer events off + dimmed, re-enabled at idle.
+function syncTackleLock() { tackleEl.classList.toggle('locked', tackleLocked()); }
+
 function renderRods() {
   const wrap = $('rod-list'); wrap.innerHTML = '';
   Object.entries(A.RODS).forEach(([id, r]) => {
@@ -419,7 +430,7 @@ function renderRods() {
     b.innerHTML = `<div class="o-row"><span class="o-name">${r.name}</span>
       <span class="o-meta">${r.line} · ${r.action}</span></div>
       <div class="o-note">${r.blurb}</div>`;
-    b.onclick = () => { tackle.rodId = id; AUDIO.play('strip'); updateLineColor(); renderRods(); renderMatch(); };
+    b.onclick = () => { if (tackleLocked()) return; tackle.rodId = id; tackleWasRolled = false; AUDIO.play('strip'); updateLineColor(); renderRods(); renderMatch(); };
     wrap.appendChild(b);
   });
 }
@@ -433,7 +444,7 @@ function renderRigs() {
     b.innerHTML = `<div class="o-row"><span class="o-name">${r.name}</span>
       <span class="o-meta">${slotsTxt}</span></div>
       <div class="o-note">${r.blurb}</div>`;
-    b.onclick = () => { setRig(id); };
+    b.onclick = () => { if (tackleLocked()) return; setRig(id); };
     wrap.appendChild(b);
   });
 }
@@ -451,6 +462,7 @@ function setRig(id) {
   });
   tackle.rigId = id;
   tackle.slots = newSlots;
+  tackleWasRolled = false;
   AUDIO.play('strip');
   updateFlyMarker();              // indicator / dry fly / foam depends on the rig
   renderRigs(); renderSlots(); renderMatch();
@@ -481,7 +493,7 @@ function renderSlots() {
       </span>
       <span class="match-dot ${dotClass}"></span>
       <span class="slot-caret">▾</span>`;
-    b.onclick = () => openPicker(i, slot);
+    b.onclick = () => { if (tackleLocked()) return; openPicker(i, slot); };
     wrap.appendChild(b);
   });
 }
@@ -502,12 +514,51 @@ function openPicker(i, slot) {
       <span class="bf-hatch ${matches ? 'match' : 'nomatch'}">${matches ? '✓ MATCH' : f.tag.split(' · ')[0]}</span></div>
       <div class="bf-tag">${f.tag} · hook #${f.hook}</div>
       <div class="bf-note">${f.note}</div>`;
-    b.onclick = () => { tackle.slots[i] = id; AUDIO.play('mend'); closePicker(); renderSlots(); renderMatch(); };
+    b.onclick = () => { tackle.slots[i] = id; tackleWasRolled = false; AUDIO.play('mend'); closePicker(); renderSlots(); renderMatch(); };
     body.appendChild(b);
   });
   $('fly-picker').classList.add('open');
 }
 function closePicker() { $('fly-picker').classList.remove('open'); }
+
+// =========================================================
+//  RANDOMIZE — "smart-ish" dice roll of the whole loadout
+//  Random season / rod / rig, then flies leaning toward whatever
+//  matches the current hatch so the roll is actually fishable.
+// =========================================================
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+// best fly for a slot: prefer one that imitates the active hatch (or an attractor
+// when nothing's hatching); otherwise any valid fly for the slot.
+function rollFlyForSlot(slot) {
+  const valid = Object.entries(A.FLIES).filter(([, f]) => A.slotAccepts(slot, f.cat));
+  const wantHatch = cond.hatch !== 'none' ? cond.hatch : 'attractor';
+  const matches = valid.filter(([, f]) => f.imitates.includes(wantHatch));
+  // 80% of the time take a matching fly when one exists; else a random valid one
+  const pool = (matches.length && Math.random() < 0.8) ? matches : valid;
+  return pick(pool)[0];
+}
+
+async function randomizeTackle() {
+  const btn = $('randomize-btn');
+  if (btn) { btn.classList.remove('rolling'); void btn.offsetWidth; btn.classList.add('rolling'); }
+  AUDIO.play('strip');
+
+  // season (await the art swap; setSeason no-ops if we happen to roll the same one)
+  // const newSeason = pick(A.SEASON_ORDER);
+  // if (newSeason !== SEASON_ID) await setSeason(newSeason);
+
+  // rod + rig
+  tackle.rodId = pick(Object.keys(A.RODS));
+  const rigId = pick(Object.keys(A.RIGS));
+  tackle.rigId = rigId;
+  // flies to fit the freshly-rolled rig's slots, biased to the hatch
+  tackle.slots = A.RIGS[rigId].slots.map(slot => rollFlyForSlot(slot));
+
+  tackleWasRolled = true;
+  updateLineColor(); updateFlyMarker();
+  renderRods(); renderRigs(); renderSlots(); renderMatch();
+}
 
 // =========================================================
 //  SCALING
@@ -589,6 +640,8 @@ function toIdle() {
   state = ST.IDLE;
   stopDrift();
   stopDriftFrames();
+  clearCastTiming();
+  castLuck = 1;
   hideFlyLine();
   castLineEl.classList.remove('show');
   bg.style.display = ''; bg2.style.display = '';
@@ -602,6 +655,7 @@ function toIdle() {
   fightEl.classList.add('hidden');
   setControls({ cast: true });
   renderMatch();
+  syncTackleLock();
 }
 
 function startCast() {
@@ -609,6 +663,7 @@ function startCast() {
   if (!e.ready) { flashNote('Tie on a fly first.'); return; }
   state = ST.CASTING;
   setControls({});
+  syncTackleLock();
   hideFlyLine();
   AUDIO.play('cast');
   fg.style.display = 'block';
@@ -617,26 +672,167 @@ function startCast() {
   // cast line: re-colored to the rod, masked by the per-frame baked line shape
   castLineEl.style.background = (A.RODS[tackle.rodId] && A.RODS[tackle.rodId].lineColor) || '#e7ff8c';
   castLineEl.classList.add('show');
+  // The cast frames LOOP (back and forth) while the timing meter sweeps, so the
+  // rod keeps loading/unloading across all the frames instead of freezing on one.
+  // The player's release ends the loop and lands the fly.
+  startCastTiming();
+}
+
+// once the timing meter resolves, the fly lands and the drift begins
+function finishCast() {
+  if (state !== ST.CASTING) return;
+  AUDIO.play('splash');
+  // the still scene (bg[0]) is the first drift frame, so just start the drift —
+  // the fly line + angler bob + pan all play over it, same as every drift frame
+  startDrift();
+}
+
+// =========================================================
+//  CAST TIMING METER — a rod-loading reflex synced to the casting motion.
+//  A marker sweeps a bar with a "good" band and a tight "perfect" core; the
+//  cast frames cycle back-and-forth the whole time. Tap / click / Space to
+//  release: the closer the marker is to perfect, the cleaner the cast and the
+//  bigger the bite-luck bonus on the coming drift. A timeout = a blown cast.
+// =========================================================
+const TIMING_CFG = {
+  sweepMs: 620,         // base ms for one full bar traverse — then scaled by rod action below
+  durationMs: 1500,     // auto-release as a BLOWN cast if the player never releases
+  goodHalf: 0.16,       // half-width of the GOOD band (fraction of bar)
+  perfectHalf: 0.05,    // half-width of the PERFECT core
+  maxLuck: 1.9,         // bite-luck at a dead-center release (1 = no bonus)
+};
+
+let castTiming = null;   // { raf, t0, marker, frameTimer, resolved }
+const castTimingEl = $('cast-timing');
+const castMeterEl = $('cast-meter');
+const castMarkerEl = $('cast-marker');
+const castZoneGood = $('cast-zone-good');
+const castZonePerfect = $('cast-zone-perfect');
+const castReleaseBtn = $('cast-release');
+
+// place the good/perfect zones; centered with a little random offset each cast so
+// it's a real read, not muscle memory.
+function placeCastZones() {
+  const center = 0.32 + Math.random() * 0.36;   // 32%..68% across
+  castTiming.center = center;
+  const g = TIMING_CFG.goodHalf, p = TIMING_CFG.perfectHalf;
+  castZoneGood.style.left = ((center - g) * 100) + '%';
+  castZoneGood.style.width = (g * 2 * 100) + '%';
+  castZonePerfect.style.left = ((center - p) * 100) + '%';
+  castZonePerfect.style.width = (p * 2 * 100) + '%';
+}
+
+function startCastTiming() {
+  castLuck = 1;
+  castTiming = { resolved: false, frameTimer: null };
+  castTimingEl.classList.remove('hidden');
+  castMarkerEl.style.visibility = '';     // restore the marker (a prior timeout may have hidden it)
+  // rod sweeps quicker on faster-action rods (fast=stiff, snappier loop). Glass
+  // (slow) is the reference feel; each step up in action only nudges the speed a
+  // little quicker so the faster rods aren't unmanageable.
+  const action = A.RODS[tackle.rodId].action;
+  castTiming.sweepMs = TIMING_CFG.sweepMs * (action === 'fast' ? 0.86 : action === 'slow' ? 1 : 0.93);
+  placeCastZones();
+
+  // loop the cast frames back-and-forth (ping-pong) so the rod keeps loading
   const cadence = A.RODS[tackle.rodId].cadence;
-  let i = 0;
+  let fi = 0, dir = 1;
   (function frame() {
-    if (state !== ST.CASTING) return;
-    if (i >= IMG.cast.length) {
-      AUDIO.play('splash');
-      // the still scene (bg[0]) is the first drift frame, so just start the drift —
-      // the fly line + angler bob + pan all play over it, same as every drift frame
-      startDrift();
-      return;
-    }
-    fg.src = IMG.cast[i];
-    const mask = `url("${IMG.castLine[i]}")`;
+    if (state !== ST.CASTING || !castTiming) return;
+    castTiming.fi = fi;             // remember where the loop is for the follow-through
+    fg.src = IMG.cast[fi];
+    const mask = `url("${IMG.castLine[fi]}")`;
     castLineEl.style.webkitMaskImage = mask;
     castLineEl.style.maskImage = mask;
-    const d = cadence[i] || 110;
-    i++;
-    setTimeout(frame, d);
+    const d = cadence[fi] || 110;
+    fi += dir;
+    if (fi >= IMG.cast.length) { fi = IMG.cast.length - 2; dir = -1; }   // bounce at the end
+    else if (fi < 0) { fi = 1; dir = 1; }                                // bounce at the start
+    castTiming.frameTimer = setTimeout(frame, d);
+  })();
+
+  // marker sweep (triangle wave 0..1..0) + safety auto-release
+  castTiming.t0 = performance.now();
+  AUDIO.play('cast');
+  (function sweep(now) {
+    if (state !== ST.CASTING || !castTiming || castTiming.resolved) return;
+    const e = now - castTiming.t0;
+    const phase = (e % (castTiming.sweepMs * 2)) / castTiming.sweepMs;   // 0..2
+    const pos = phase <= 1 ? phase : 2 - phase;                           // 0..1..0 triangle
+    castTiming.pos = pos;
+    castMarkerEl.style.left = (pos * 100) + '%';
+    if (e >= TIMING_CFG.durationMs) { releaseCast(true); return; }        // timed out → forced blown
+    castTiming.raf = requestAnimationFrame(sweep);
+  })(castTiming.t0);
+}
+
+// grade the release: distance from the zone center → tier + bite-luck bonus.
+// `forced` (a timeout) is always a blown cast regardless of where the marker sat.
+function releaseCast(forced) {
+  if (!castTiming || castTiming.resolved) return;
+  castTiming.resolved = true;
+  cancelAnimationFrame(castTiming.raf);
+  clearTimeout(castTiming.frameTimer);
+  const startFi = castTiming.fi || 0;          // where the ping-pong loop left off
+
+  const pos = castTiming.pos != null ? castTiming.pos : 1;
+  const dist = Math.abs(pos - castTiming.center);
+  let tier, luck;
+  // a timeout never "landed" anywhere — hide the marker so the blown result reads
+  // as a missed window rather than a release at the marker's frozen position.
+  if (forced) castMarkerEl.style.visibility = 'hidden';
+  if (forced) { tier = 'blown'; }
+  else if (dist <= TIMING_CFG.perfectHalf) { tier = 'perfect'; }
+  else if (dist <= TIMING_CFG.goodHalf) { tier = 'good'; }
+  else { tier = 'blown'; }
+
+  // luck scales smoothly from maxLuck (dead center) down to 1 at the GOOD edge,
+  // and below 1 (a penalty) for a blown cast — earn the easier bite by nailing it.
+  if (tier === 'blown') {
+    const over = forced ? 1 : Math.min(1, (dist - TIMING_CFG.goodHalf) / (0.5 - TIMING_CFG.goodHalf));
+    luck = 1 - 0.45 * over;          // down to ~0.55 on a wild / timed-out cast
+  } else {
+    const t = 1 - dist / TIMING_CFG.goodHalf;   // 0 at good-edge, 1 at center
+    luck = 1 + (TIMING_CFG.maxLuck - 1) * t;
+  }
+  castLuck = luck;
+
+  // consecutive-perfect-cast streak (read by the Perfectionist achievement)
+  perfectCastStreak = tier === 'perfect' ? perfectCastStreak + 1 : 0;
+
+  // result feedback lives entirely on the bar (no words, no particles)
+  castMeterEl.classList.add('result-' + tier);
+  AUDIO.play(tier === 'blown' ? 'fail' : tier === 'perfect' ? 'record' : 'strip');
+
+  // play the cast animation through to its final delivery frame before the fly
+  // lands — the ping-pong loop is frozen wherever the release caught it, so we run
+  // it forward from there to the end so the cast motion always completes.
+  const cadence = A.RODS[tackle.rodId].cadence;
+  let fi = startFi;
+  (function followThrough() {
+    if (state !== ST.CASTING || !castTiming) return;   // aborted (RESET / season change)
+    fg.src = IMG.cast[fi];
+    const mask = `url("${IMG.castLine[fi]}")`;
+    castLineEl.style.webkitMaskImage = mask;
+    castLineEl.style.maskImage = mask;
+    if (fi >= IMG.cast.length - 1) {           // reached the delivery frame → land
+      setTimeout(() => { hideCastTiming(); finishCast(); }, 200);
+      return;
+    }
+    fi++;
+    castTiming.followTimer = setTimeout(followThrough, (cadence[fi] || 110) * 0.7);
   })();
 }
+
+function hideCastTiming() {
+  if (castTiming) { cancelAnimationFrame(castTiming.raf); clearTimeout(castTiming.frameTimer); clearTimeout(castTiming.followTimer); }
+  castTiming = null;
+  castTimingEl.classList.add('hidden');
+  castMeterEl.classList.remove('result-perfect', 'result-good', 'result-blown');
+}
+
+// abort an in-progress cast (RESET / season change mid-cast)
+function clearCastTiming() { hideCastTiming(); }
 
 // ---- drift motion (fakes a continuous downstream drift from N still frames) ----
 // Each "segment" the foreground angler pans across the held background while the
@@ -775,8 +971,11 @@ function rollBite(now) {
   if (!e.ready || e.biteMul <= 0) return;
   const driftFactor = 0.22 + 0.78 * (driftQuality / 100);
   const dragFree = now < dragFreeUntil ? 1.5 : 1;
-  const BASE = 0.115;
-  let p = BASE * e.biteMul * driftFactor * pity * dragFree;
+  // baseline is intentionally low — the cast-timing meter earns it back: castLuck
+  // is 1 on a good-edge release, climbs toward ~1.9 for a dead-center "perfect"
+  // cast, and drops below 1 on a blown cast.
+  const BASE = 0.078;
+  let p = BASE * e.biteMul * driftFactor * pity * dragFree * castLuck;
   if (driftProgress > 0.9) p *= 0.3;  // lure has drifted out of the zone — fish rarely chase it
   p = Math.min(0.45, p);
   if (Math.random() < p) {
@@ -1025,10 +1224,11 @@ function landFish() {
   // shared context for achievements + the daily challenge
   const ctx = {
     journal, speciesId: bite.speciesId, inches, trophy: bite.trophy, legend: isLegend,
-    rigId: tackle.rigId, fly: lead, seasonId: SEASON_ID,
+    rigId: tackle.rigId, fly: lead, seasonId: SEASON_ID, hatch: cond.hatch,
     phaseId: A.PHASES[cond.phaseIdx].id, light: cond.light,
     streak: catchStreak, slamDay, daySpeciesCount: Object.keys(daySpecies).length,
     dryEat: !!lead && rig.slots.every(sl => sl === 'top') && lead.cat !== 'nymph',
+    diceRolled: tackleWasRolled, perfectCastStreak,
   };
   checkAchievements(ctx);
   checkDaily(ctx);
@@ -1501,6 +1701,7 @@ async function setSeason(id) {
 }
 // dragging the slider snaps to the nearest season
 $('season-range').addEventListener('input', (e) => {
+  if (tackleLocked()) { e.target.value = A.SEASON_ORDER.indexOf(SEASON_ID); return; }
   const id = A.SEASON_ORDER[+e.target.value];
   if (id) setSeason(id);
 });
@@ -1509,11 +1710,16 @@ $('season-range').addEventListener('input', (e) => {
 //  WIRING
 // =========================================================
 castBtn.onclick = () => { AUDIO.unlock(); startCast(); };
+const randomizeBtn = $('randomize-btn');
+if (randomizeBtn) randomizeBtn.onclick = () => { if (state === ST.IDLE) randomizeTackle(); };
 mendBtn.onclick = doMend;
 setBtn.onclick = doSet;
+// release the cast-timing meter — by button, or by tapping anywhere on the meter
+castReleaseBtn.onclick = () => { if (castTiming && !castTiming.resolved) releaseCast(); };
+castMeterEl.onclick = () => { if (castTiming && !castTiming.resolved) releaseCast(); };
 stripBtn.onclick = doStrip;
 reelBtn.onclick = reelIn;
-releaseBtn.onclick = () => { hideAudioNudge(); toIdle(); $('reveal-size').classList.remove('hidden'); revImg.style.display = ''; };
+releaseBtn.onclick = () => { toIdle(); $('reveal-size').classList.remove('hidden'); revImg.style.display = ''; };
 $('picker-scrim').onclick = closePicker;
 $('picker-close').onclick = closePicker;
 
@@ -1530,7 +1736,7 @@ if (resetJournalBtn) resetJournalBtn.onclick = () => {
   localStorage.removeItem(LSK);
   journal = loadJournal();
   journal.seasonsFished[SEASON_ID] = true;
-  catchStreak = 0; daySpecies = {};
+  catchStreak = 0; daySpecies = {}; perfectCastStreak = 0;
   saveJournal();
   renderJournal();
   AUDIO.play('strip');
@@ -1545,15 +1751,18 @@ if (resetJournalBtn) resetJournalBtn.onclick = () => {
   d.addEventListener('toggle', () => localStorage.setItem(key, d.open ? '1' : '0'));
 });
 
-// keyboard: space = primary action
+// keyboard: space = primary action (incl. releasing the cast-timing meter)
 window.addEventListener('keydown', (ev) => {
   if (ev.code === 'Space') {
     ev.preventDefault();
     if (state === ST.IDLE) { AUDIO.unlock(); startCast(); }
+    else if (state === ST.CASTING && castTiming && !castTiming.resolved) releaseCast();
     else if (state === ST.BITE) doSet();
     else if (state === ST.FIGHT) doStrip();
     else if (state === ST.REVEAL) releaseBtn.click();
   } else if (ev.code === 'KeyM' && state === ST.DRIFT) doMend();
+  // R = reset the cast (mirrors the RESET button — available whenever it's shown)
+  else if (ev.code === 'KeyR' && !reelBtn.classList.contains('hidden')) reelIn();
 });
 
 // tabs
@@ -1569,15 +1778,16 @@ document.querySelectorAll('.tab').forEach(t => {
 
 // audio toggle
 const muteBtn = $('mute-btn');
+// speaker glyphs as inline SVG so the muted vs. on state reads clearly at a glance
+const ICON_MUTED = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>';
+const ICON_ON    = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>';
 function reflectMute() {
   const m = AUDIO.isMuted();
   muteBtn.classList.toggle('muted', m);
-  muteBtn.textContent = m ? '♪' : '♬';
+  muteBtn.innerHTML = m ? ICON_MUTED : ICON_ON;
   muteBtn.title = m ? 'Sound off — click for stream & birds' : 'Sound on';
 }
-muteBtn.onclick = () => { AUDIO.unlock(); const m = AUDIO.toggle(); localStorage.setItem('bl_muted', m ? '1' : '0'); reflectMute(); hideAudioNudge(); };
-$('nudge-on').onclick = () => { AUDIO.unlock(); AUDIO.setMuted(false); localStorage.setItem('bl_muted', '0'); reflectMute(); hideAudioNudge(); };
-function hideAudioNudge() { const n = $('audio-nudge'); if (n) n.style.display = 'none'; }
+muteBtn.onclick = () => { AUDIO.unlock(); const m = AUDIO.toggle(); localStorage.setItem('bl_muted', m ? '1' : '0'); reflectMute(); };
 
 // =========================================================
 //  INIT
@@ -1596,11 +1806,10 @@ async function init() {
   // prime audio with the starting season (before unlock, so startAmbient picks it up)
   AUDIO.setSeason(SEASON_ID);
 
-  // audio default: muted unless user previously turned it on
+  // audio default: OFF — only on if the user explicitly turned it on before
   const pref = localStorage.getItem('bl_muted');
   AUDIO.setMuted(pref !== '0');
   reflectMute();
-  if (pref === '0') hideAudioNudge();
 
   // decode the active scene + fish before first paint → no pop-in flashes
   await preload(locImageList(IMG).concat(FISH_IMGS));

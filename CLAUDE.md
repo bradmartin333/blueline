@@ -27,6 +27,18 @@ automatically by Claude Code when working in this repo.
   (spring/summer/autumn/winter): recolors foliage/water/rock and adds drifting
   seasonal elements. Its `scripts/season_style.py` needs Pillow + numpy and is
   run with `uv run` (see the rule above).
+- **uv-validation** — validate changes to the browser code (`data.js` / `game.js`
+  / `index.html` / `style.css`): `scripts/validate.py` syntax-checks the JS with
+  esprima and loads the page in headless Playwright, failing on console errors.
+  Run it with `uv run` (deps come in via PEP 723 + `uv run --with`, never pip).
+- **cruft-cleanup** — sweep away cruft before finishing: dead code from reworked
+  features (orphaned vars/functions/CSS/DOM + dangling references) and stray
+  verification artifacts (screenshots, temp scripts, logs, servers), so
+  `git status` shows only intended changes. Reach for it at the end of a task.
+- **skill-gardener** — keep `.claude/skills/` healthy as development continues:
+  fold fresh learnings into existing skills, fix stale examples, prune obsolete
+  skills, and propose new skills when a repeatable pattern emerges. Run it
+  periodically, like a linter for the skill set.
 
 ## Project notes
 

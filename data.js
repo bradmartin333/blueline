@@ -66,7 +66,7 @@ DATA.SEASONS = {
   autumn: { ...SEASON_BASE, name: 'Autumn', blurb: 'Hardwood canopy turning, browns coloring up and feeding hard.',     dir: seasonArt('autumn'),
     hatches: { dawn: 'none', morning: 'bwo', midday: 'terrestrial', afternoon: 'bwo',        evening: 'caddis', dusk: 'caddis' } },
   winter: { ...SEASON_BASE, name: 'Winter', blurb: 'Cold, slow flows under bare trees — tiny flies, deep drifts.',      dir: seasonArt('winter'),
-    hatches: { dawn: 'none', morning: 'none', midday: 'bwo',        afternoon: 'bwo',        evening: 'none',   dusk: 'none' } },
+    hatches: { dawn: 'none', morning: 'midge', midday: 'bwo',       afternoon: 'bwo',        evening: 'midge',  dusk: 'none' } },
 };
 DATA.SEASON_ORDER = ['spring', 'summer', 'autumn', 'winter'];
 
@@ -79,6 +79,7 @@ DATA.HATCHES = {
   caddis:     { label: 'Caddis Hatch',  blurb: 'Caddis fluttering the surface — prime time.' },
   stonefly:   { label: 'Stoneflies',    blurb: 'Big stonefly nymphs on the move.' },
   terrestrial:{ label: 'Terrestrials',  blurb: 'Hoppers & ants blowing onto the water.' },
+  midge:      { label: 'Midge Hatch',   blurb: 'Tiny midges clustering — winter\'s bread and butter.' },
 };
 
 // ---- Time-of-day phases. Conditions cycle through these. ----
@@ -152,7 +153,13 @@ DATA.FLIES = {
   perdigon:    { name: 'Perdigon',           tag: 'mayfly · nymph',   cat: 'nymph',       imitates: ['bwo','pmd','attractor'],  depth: 'deep',    hook: 16, vis: 2, note: 'Slim & heavy. Sinks fast, fishes deep.' },
   pats:        { name: "Pat's Rubber Legs",  tag: 'stone · nymph',    cat: 'nymph',       imitates: ['stonefly'],               depth: 'deep',    hook: 8,  vis: 3, note: 'Big meal. Browns travel for it.' },
   blowtorch:   { name: 'Blowtorch',          tag: 'attractor · nymph',cat: 'nymph',       imitates: ['attractor','pmd'],        depth: 'shallow', hook: 14, vis: 2, note: 'Flashy hot-spot nymph. Searching machine.' },
-  scud:        { name: 'Scud',               tag: 'crustacean',       cat: 'nymph',       imitates: ['scud','attractor'],       depth: 'shallow', hook: 16, vis: 2, note: 'Year-round protein. Loves stained water.' },
+  griffiths:   { name: "Griffith's Gnat",    tag: 'midge · dry',      cat: 'dry',         imitates: ['midge','bwo','attractor'], depth: 'surface', hook: 20, vis: 1, note: 'Tiny midge cluster. Saves slow winter days.' },
+  hopper:      { name: 'Foam Hopper',        tag: 'terrestrial',      cat: 'terrestrial', imitates: ['terrestrial','attractor'], depth: 'surface', hook: 8,  vis: 3, note: 'Big juicy hopper. Browns can\'t resist it.' },
+  beetle:      { name: 'Foam Beetle',        tag: 'terrestrial',      cat: 'terrestrial', imitates: ['terrestrial'],            depth: 'film',    hook: 16, vis: 2, note: 'Plops down hard. Deadly on a hot afternoon.' },
+  ph_nymph:    { name: 'Pheasant Tail',      tag: 'mayfly · nymph',   cat: 'nymph',       imitates: ['bwo','pmd','attractor'],  depth: 'shallow', hook: 16, vis: 1, note: 'The classic mayfly nymph. Subtle, deadly, always works.' },
+  zebra:       { name: 'Zebra Midge',        tag: 'midge · nymph',    cat: 'nymph',       imitates: ['midge','attractor'],      depth: 'deep',    hook: 18, vis: 1, note: 'Tiny tungsten midge. Winter trout food #1.' },
+  hares_ear:   { name: "Hare's Ear",         tag: 'attractor · nymph',cat: 'nymph',       imitates: ['attractor','caddis','stonefly'], depth: 'shallow', hook: 14, vis: 2, note: 'Buggy and generic. Looks like everything.' },
+  san_juan:    { name: 'San Juan Worm',      tag: 'worm · nymph',     cat: 'nymph',       imitates: ['attractor'],              depth: 'deep',    hook: 12, vis: 2, note: 'A red wiggle of protein. Shines in stained, high water.' },
 };
 
 // ---- Rigs ----
@@ -166,12 +173,14 @@ DATA.RIGS = {
                    blurb: 'One fly on top. Pure, visual, and demands a clean drift.' },
   double_dry:    { name: 'Double Dry',     slots: ['top','top'],    weight: 'light',  driftDecay: 1.3,  biteBase: 1.2,  mendPayoff: 1.3,
                    blurb: 'Two dries — twice the looks, twice the tangle risk.' },
-  nymph_single:  { name: 'Nymph (single)', slots: ['drop'],         weight: 'medium', driftDecay: 0.7,  biteBase: 1.05, mendPayoff: 0.8,
+  nymph_single:  { name: 'Single Nymph',   slots: ['drop'],         weight: 'medium', driftDecay: 0.7,  biteBase: 1.05, mendPayoff: 0.8,
                    blurb: 'One nymph down deep. Drag hides under the surface.' },
-  nymph_double:  { name: 'Nymph (double)', slots: ['drop','drop'],  weight: 'heavy',  driftDecay: 0.65, biteBase: 1.3,  mendPayoff: 0.8,
+  nymph_double:  { name: 'Double Nymph',   slots: ['drop','drop'],  weight: 'heavy',  driftDecay: 0.65, biteBase: 1.3,  mendPayoff: 0.8,
                    blurb: 'Two nymphs at two depths. Covers the column.' },
   hopper_dropper:{ name: 'Hopper-Dropper', slots: ['top','drop'],   weight: 'heavy',  driftDecay: 0.95, biteBase: 1.25, mendPayoff: 1.1,
                    blurb: 'A buoyant bug up top, a nymph hung below. Does it all.' },
+  dry_dropper:   { name: 'Dry-Dropper',    slots: ['top','drop'],   weight: 'medium', driftDecay: 1.1,  biteBase: 1.2,  mendPayoff: 1.25,
+                   blurb: 'A small dry as your sighter, a light nymph below. Subtle and versatile.' },
 };
 // slot 'top'  accepts: dry, terrestrial
 // slot 'drop' accepts: nymph
@@ -194,10 +203,10 @@ DATA.RODS = {
                cadence: [180, 220, 150, 200], comfort: 'light', delicate: 1.35, punch: 0.7,
                blurb: 'Soft fiberglass. Lays small dries down like a feather; bogs under heavy rigs.' },
   graphite5: { name: 'All-Water',   line: '5-weight', action: 'medium', lineColor: '#e7ff8c',
-               cadence: [110, 130, 90, 120], comfort: 'medium', delicate: 1.0, punch: 1.0,
+               cadence: [160, 200, 130, 180], comfort: 'medium', delicate: 1.0, punch: 1.0,
                blurb: 'Medium graphite. No weaknesses, no party tricks. The workhorse.' },
   streamer6: { name: 'Quick-Tip',   line: '6-weight', action: 'fast', lineColor: '#ff9a40',
-               cadence: [70, 85, 60, 80], comfort: 'heavy', delicate: 0.78, punch: 1.4,
+               cadence: [140, 180, 110, 160], comfort: 'heavy', delicate: 0.78, punch: 1.4,
                blurb: 'Fast & stiff. Punches heavy nymph rigs and wind; too much for tiny dries.' },
 };
 
@@ -215,7 +224,7 @@ DATA.weightRank = { light: 0, medium: 1, heavy: 2 };
 DATA.SPECIES = {
   brook: {
     name: 'Brook Trout', img: 'assets/fish/brook.webp', weight: 1.0,
-    foods: ['caddis','terrestrial','attractor'], depths: ['surface','film','shallow'],
+    foods: ['caddis','terrestrial','midge','attractor'], depths: ['surface','film','shallow'],
     lightLove: ['low','soft'], spook: 0.6,
     size: [5, 8, 13], trophy: 11, fight: 0.3,
     blurb: 'Eager and gorgeous. Will smash a caddis at dusk all day long.',
@@ -223,7 +232,7 @@ DATA.SPECIES = {
       blurb: 'An ancient char that haunts the deep cedar pool — bigger than any brookie has a right to be.' } },
   rainbow: {
     name: 'Rainbow Trout', img: 'assets/fish/rainbow.webp', weight: 0.85,
-    foods: ['bwo','pmd','scud','attractor'], depths: ['film','shallow','deep'],
+    foods: ['bwo','pmd','midge','attractor'], depths: ['film','shallow','deep'],
     lightLove: ['soft','bright'], spook: 1.0,
     size: [8, 12, 18], trophy: 16, fight: 0.6,
     blurb: 'Mid-column generalist. Acrobatic — expect jumps and screaming runs.',
@@ -299,6 +308,22 @@ DATA.ACHIEVEMENTS = [
     test: c => DATA.SPECIES_ORDER.every(id => c.journal.legends && c.journal.legends[id]) },
   { id: 'century',   icon: '💯', name: 'Centurion',        desc: 'Land 100 fish.',
     test: c => c.journal.landed >= 100 },
+  { id: 'fifty',     icon: '🪣', name: 'Half a Hundred',   desc: 'Land 50 fish.',
+    test: c => c.journal.landed >= 50 },
+  { id: 'streak10',  icon: '⚡', name: 'Unstoppable',      desc: 'Land 10 fish in a row without losing one.',
+    test: c => c.streak >= 10 },
+  { id: 'midge',     icon: '🦟', name: 'Match the Midge',  desc: 'Fool a fish during a midge hatch.',
+    test: c => c.hatch === 'midge' },
+  { id: 'terrestrial',icon: '🦗', name: 'Hopper Dropper',  desc: 'Land a fish on a terrestrial fly.',
+    test: c => !!c.fly && c.fly.cat === 'terrestrial' },
+  { id: 'bright',    icon: '🌞', name: 'High Noon',         desc: 'Land a fish in bright midday light.',
+    test: c => c.light === 'bright' },
+  { id: 'monster',   icon: '🦖', name: 'River Monster',    desc: 'Land a fish of 26 inches or more.',
+    test: c => c.inches >= 26 },
+  { id: 'quickdraw', icon: '🎰', name: 'Lucky Roll',       desc: 'Land a fish on a fully randomized loadout.',
+    test: c => !!c.diceRolled },
+  { id: 'perfectcast',icon: '✨', name: 'Perfectionist',   desc: 'Land a fish after 3 perfect casts in a row.',
+    test: c => (c.perfectCastStreak || 0) >= 3 },
 ];
 
 window.DATA = DATA;
