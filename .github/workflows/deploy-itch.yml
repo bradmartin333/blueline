@@ -1,0 +1,38 @@
+name: Deploy to itch.io
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  ITCH_TARGET: bradmartin333/blueline
+  ITCH_CHANNEL: html5
+
+jobs:
+  butler-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Stage game files
+        run: |
+          mkdir -p build
+          cp index.html style.css data.js game.js audio.js build/
+          cp -r assets build/
+
+      - name: Install butler
+        run: |
+          curl -L -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip butler.zip
+          chmod +x butler
+          ./butler -V
+
+      - name: Push to itch.io
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          VERSION="${GITHUB_REF_NAME:-manual-${GITHUB_SHA::7}}"
+          ./butler push build "${ITCH_TARGET}:${ITCH_CHANNEL}" --userversion "${VERSION}"
