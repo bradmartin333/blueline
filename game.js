@@ -265,9 +265,15 @@ function rollWater() {
   const r = Math.random();
   cond.waterId = r < 0.5 ? 'clear' : r < 0.8 ? 'riffled' : 'stained';
 }
+// the dark, low-light phases (dawn / dusk) read as "night" for the ambience —
+// birdsong gives way to owl hoots in the audio loop.
+function isNightPhase() {
+  return A.PHASES[cond.phaseIdx].light === 'low';
+}
 function applyPhase() {
   const p = A.PHASES[cond.phaseIdx];
   cond.light = p.light;
+  AUDIO.setNight(isNightPhase());
   // the season decides which bug is on for this phase; fall back to the phase default
   const seasonHatch = (SEASON.hatches && SEASON.hatches[p.id]) || p.hatch;
   // hatch mostly follows the season/phase, with a chance of "searching"

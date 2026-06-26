@@ -1,6 +1,6 @@
 // ============================================================
 //  AUDIO — fully procedural (WebAudio). No asset files.
-//  Ambient stream + birdsong loop, plus cast/splash/reel SFX.
+//  Ambient stream + birdsong loop (owl hoots after dark), plus cast/splash/reel SFX.
 //  Muted by default; unlocked on first gesture.
 //  Call AUDIO.setSeason(id) to shift the ambient to match.
 // ============================================================
@@ -23,6 +23,7 @@ const AUDIO = (function () {
   let cicadaBurstTimer = null; // setTimeout handle for burst scheduling
 
   let currentSeason = 'spring';
+  let nightMode = false;   // when true, the birdsong loop hoots owls instead of chirping
 
   // ---- Per-season ambient config ----
   // birdInterval : [minMs, maxMs] between chirps
@@ -223,13 +224,20 @@ const AUDIO = (function () {
   }
 
   // ---------- Birdsong: occasional chirps, tuned per season ----------
-  function scheduleBird() {
+  // After dark the same loop hoots owls instead — sparser and slower than the
+  // chirps, so the night scene feels quiet, but not so sparse you wait forever
+  // to hear one.
+  const OWL_INTERVAL = [6000, 16000];
+
+  function scheduleBird(soon) {
     clearTimeout(birdTimer);
     const cfg = SEASON_AMB[currentSeason] || SEASON_AMB.spring;
-    const [minMs, maxMs] = cfg.birdInterval;
-    const next = minMs + Math.random() * (maxMs - minMs);
+    const [minMs, maxMs] = nightMode ? OWL_INTERVAL : cfg.birdInterval;
+    // `soon` fires the first call quickly (e.g. right when night begins) so the
+    // owl is immediately audible instead of waiting out a full interval.
+    const next = soon ? 600 + Math.random() * 1200 : minMs + Math.random() * (maxMs - minMs);
     birdTimer = setTimeout(() => {
-      if (started) chirp();
+      if (started) (nightMode ? owl : chirp)();
       scheduleBird();
     }, next);
   }
@@ -257,6 +265,44 @@ const AUDIO = (function () {
     g.gain.setValueAtTime(0, t0);
     g.gain.linearRampToValueAtTime(cfg.birdGain * BIRD_VOLUME, t0 + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0005, t0 + notes * 0.16 + 0.15);
+  }
+
+  // The nighttime counterpart to chirp(): a low, breathy owl hoot. A soft sine
+  // fundamental down in the 280–360 Hz range, each hoot swelling and fading, with
+  // most calls being the classic two-hoot "hoo … hoo".
+  function owl() {
+    const t0 = ctx.currentTime;
+    const hoots = Math.random() < 0.7 ? 2 : 1;   // mostly the "hoo-hoo" call
+    const base = 280 + Math.random() * 80;
+    // A low hoot needs much more gain than a bright chirp to be perceptible over
+    // the water bed, so the owl uses its own absolute peak (in line with the
+    // audible SFX) rather than the very quiet BIRD_VOLUME the chirps share.
+    const peak = 0.11;
+    for (let h = 0; h < hoots; h++) {
+      const t = t0 + h * (0.55 + Math.random() * 0.15);
+      const f = base * (1 + (Math.random() - 0.5) * 0.06);
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(f * 1.06, t);
+      o.frequency.linearRampToValueAtTime(f, t + 0.12);
+      o.frequency.linearRampToValueAtTime(f * 0.94, t + 0.4);
+      // a faint breathy second partial for body
+      const o2 = ctx.createOscillator();
+      o2.type = 'sine';
+      o2.frequency.setValueAtTime(f * 2.01, t);
+      const g2 = ctx.createGain(); g2.gain.value = 0.18;
+      o2.connect(g2);
+      const g = ctx.createGain();
+      g.gain.value = 0; g.connect(ambGain || master);
+      g2.connect(g);
+      o.connect(g);
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(peak, t + 0.1);    // gentle swell in
+      g.gain.linearRampToValueAtTime(peak, t + 0.28);   // hold
+      g.gain.exponentialRampToValueAtTime(0.0004, t + 0.55);
+      o.start(t); o.stop(t + 0.6);
+      o2.start(t); o2.stop(t + 0.6);
+    }
   }
 
   // ---------- one-shot helpers ----------
@@ -343,6 +389,14 @@ const AUDIO = (function () {
     play(name, arg) {
       if (!ctx || muted) return;
       if (SFX[name]) SFX[name](arg);
+    },
+    // toggle the nighttime owl loop on/off; reschedules so the change is heard now
+    setNight(on) {
+      on = !!on;
+      if (on === nightMode) return;
+      nightMode = on;
+      // when night falls, fire an owl soon so the shift is immediately heard
+      if (started) scheduleBird(on);
     },
     setSeason(id) {
       if (!SEASON_AMB[id] || id === currentSeason) return;
