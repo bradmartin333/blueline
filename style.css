@@ -638,6 +638,7 @@ details.sec > summary.sec-label:hover { color: var(--ink); }
 .toast.in { opacity: 1; transform: translateY(0); }
 .toast.ach    { border-left-color: var(--gold); }
 .toast.legend { border-left-color: var(--gold); background: rgba(40,28,8,0.95); }
+.toast.secret { border-left-color: #8b6cff; background: rgba(26,20,44,0.95); }
 .toast .t-icon { font-size: 26px; line-height: 1; }
 .toast .t-body { display: flex; flex-direction: column; }
 .toast .t-title { font-family: var(--font-display); font-weight: 800; font-size: 15px; letter-spacing: 0.02em; }

@@ -86,6 +86,11 @@ let driftQuality = 100;
 let pity = 1;
 let dragFreeUntil = 0;
 let mendCoolUntil = 0;
+const MEND_COOLDOWN_MS = 2200;   // one mend per this window — also one automend per hold
+const AUTOMEND_STREAK = 5;       // this many automends in a row (no release) → secret
+const MEND_MASH_STREAK = 5;      // this many taps blocked by one cooldown → secret
+let mendAutoStreak = 0;          // consecutive hold-driven mends; releasing M resets it
+let mendMash = 0;                // deliberate taps blocked by the active cooldown
 let lastBiteTick = 0;
 let driftRAF = null;
 let bite = null;          // current bite payload {species, sizeIn, setWindow, deadline, trophy, legend}
@@ -112,6 +117,7 @@ function loadJournal() {
   // migrate / ensure newer fields exist on older saves
   if (!j.legends) j.legends = {};
   if (!j.achievements) j.achievements = {};
+  if (!j.secrets) j.secrets = {};
   if (!j.seasonsFished) j.seasonsFished = {};
   if (!j.daily) j.daily = { key: null, done: false, streak: 0, lastCompleted: null };
   A.SPECIES_ORDER.forEach(id => { if (!j.species[id]) j.species[id] = { caught: false, count: 0, best: 0 }; });
@@ -1304,10 +1310,13 @@ function reelIn() {
 // =========================================================
 //  MEND — real logic + payoff
 // =========================================================
+// Returns true only when a mend actually lands (state right + off cooldown), so
+// callers can tell a real mend from a no-op — the held-key automend counter relies
+// on this to count one mend per cooldown.
 function doMend() {
-  if (state !== ST.DRIFT) return;
+  if (state !== ST.DRIFT) return false;
   const now = performance.now();
-  if (now < mendCoolUntil) return;
+  if (now < mendCoolUntil) return false;
   const rig = A.RIGS[tackle.rigId];
 
   // timing: best payoff when there's drag to fix but the drift isn't blown
@@ -1324,7 +1333,7 @@ function doMend() {
 
   // a clean mend buys a brief drag-free window (bite bonus)
   if (timing >= 0.85) dragFreeUntil = now + 3000;
-  mendCoolUntil = now + 2200;
+  mendCoolUntil = now + MEND_COOLDOWN_MS;
 
   // visual: flick the line with the mend frame. The main effect is the ARC flipping
   // upstream (mendBow); the lure itself only repositions a touch.
@@ -1334,6 +1343,18 @@ function doMend() {
   mendBow = 0.5 + 0.5 * timing;                      // flip the line's arc upstream
   driftProgress = Math.max(0, driftProgress - 0.08); // lure slides back upstream just a little
   setTimeout(() => { if (state === ST.DRIFT) { fg.src = IMG.drift; showFlyLine('drift'); } }, 420);
+  return true;
+}
+
+// A deliberate, user-initiated mend (M tap or MEND click). Same effect as doMend,
+// but it watches for mashing: tap during an active cooldown and the mend is blocked
+// — do that MEND_MASH_STREAK times within one cooldown and you trip a secret that
+// ribs the panic-tapping. A mend that actually lands resets the counter.
+function tapMend() {
+  if (state === ST.DRIFT && performance.now() < mendCoolUntil) {
+    if (++mendMash >= MEND_MASH_STREAK) unlockSecret('mendmash');
+  }
+  if (doMend()) mendMash = 0;
 }
 
 // =========================================================
@@ -1369,6 +1390,7 @@ function renderJournal() {
   renderDaily();
   renderLegends();
   renderAchievements();
+  renderSecrets();
 }
 
 // =========================================================
@@ -1600,6 +1622,34 @@ function checkAchievements(ctx) {
   saveJournal();
 }
 
+// Secrets are a separate, cheekier track from achievements — found by misusing
+// the game rather than mastering it. Unlock is permanent and one-shot.
+function unlockSecret(id) {
+  if (journal.secrets[id]) return;
+  const s = A.SECRETS.find(x => x.id === id);
+  if (!s) return;
+  journal.secrets[id] = Date.now();
+  saveJournal();
+  showToast(s.icon, 'Secret found: ' + s.name, s.blurb, 'secret');
+  renderSecrets();
+}
+
+function renderSecrets() {
+  const wrap = $('secret-list'); if (!wrap) return;
+  wrap.innerHTML = '';
+  const got = A.SECRETS.filter(s => journal.secrets[s.id]).length;
+  const cnt = $('secret-count'); if (cnt) cnt.textContent = `${got} / ${A.SECRETS.length}`;
+  A.SECRETS.forEach(s => {
+    const found = !!journal.secrets[s.id];
+    const row = document.createElement('div');
+    row.className = 'ach-badge' + (found ? '' : ' locked');
+    row.innerHTML = `<span class="ach-icon">${found ? s.icon : '🕵️'}</span>
+      <span class="ach-info"><span class="ach-name">${found ? s.name : '???'}</span>
+      <span class="ach-desc">${found ? s.blurb : 'Nice try!'}</span></span>`;
+    wrap.appendChild(row);
+  });
+}
+
 function renderAchievements() {
   const wrap = $('ach-list'); if (!wrap) return;
   wrap.innerHTML = '';
@@ -1718,7 +1768,22 @@ $('season-range').addEventListener('input', (e) => {
 castBtn.onclick = () => { AUDIO.unlock(); startCast(); };
 const randomizeBtn = $('randomize-btn');
 if (randomizeBtn) randomizeBtn.onclick = () => { if (state === ST.IDLE) randomizeTackle(); };
-mendBtn.onclick = doMend;
+mendBtn.onclick = tapMend;
+// Holding the MEND button down (mouse or touch) auto-mends too: while held we poll
+// and let each cooldown-clearing tick land a mend, counting them just like the held
+// M key. AUTOMEND_STREAK automends in a row trips the same secret. Releasing resets.
+// Once the secret is found, automend is disabled for good — the poll no-ops.
+let mendHoldPoll = null;
+mendBtn.addEventListener('pointerdown', () => {
+  clearInterval(mendHoldPoll);
+  if (journal.secrets.automend) return;
+  mendHoldPoll = setInterval(() => {
+    if (journal.secrets.automend) { clearInterval(mendHoldPoll); return; }
+    if (doMend() && ++mendAutoStreak >= AUTOMEND_STREAK) unlockSecret('automend');
+  }, 200);
+});
+['pointerup', 'pointerleave', 'pointercancel'].forEach(ev =>
+  mendBtn.addEventListener(ev, () => { clearInterval(mendHoldPoll); mendAutoStreak = 0; }));
 setBtn.onclick = doSet;
 // release the cast-timing meter — by button, or by tapping anywhere on the meter
 castReleaseBtn.onclick = () => { if (castTiming && !castTiming.resolved) releaseCast(); };
@@ -1766,10 +1831,24 @@ window.addEventListener('keydown', (ev) => {
     else if (state === ST.BITE) doSet();
     else if (state === ST.FIGHT) doStrip();
     else if (state === ST.REVEAL) releaseBtn.click();
-  } else if (ev.code === 'KeyM' && state === ST.DRIFT) doMend();
+  } else if (ev.code === 'KeyM' && state === ST.DRIFT) {
+    // Holding M auto-mends: the browser fires repeat keydowns while it's held, and
+    // each one that clears the cooldown lands a real mend. We count those — pull
+    // off AUTOMEND_STREAK automends in a row (no release) and you trip a secret
+    // that ribs the hands-off approach. Once that secret is found the gag is over:
+    // automend is disabled for good and a held key does nothing (mend by tapping).
+    if (ev.repeat) {
+      if (journal.secrets.automend) return;
+      if (doMend() && ++mendAutoStreak >= AUTOMEND_STREAK) unlockSecret('automend');
+      return;
+    }
+    mendAutoStreak = 0;   // a deliberate single press breaks the automend streak
+    tapMend();
+  }
   // R = reset the cast (mirrors the RESET button — available whenever it's shown)
   else if (ev.code === 'KeyR' && !reelBtn.classList.contains('hidden')) reelIn();
 });
+window.addEventListener('keyup', (ev) => { if (ev.code === 'KeyM') mendAutoStreak = 0; });
 
 // tabs
 document.querySelectorAll('.tab').forEach(t => {

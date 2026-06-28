@@ -326,4 +326,16 @@ DATA.ACHIEVEMENTS = [
     test: c => (c.perfectCastStreak || 0) >= 3 },
 ];
 
+// ---- Secrets ----
+// A different beast from achievements: these aren't earned by fishing *well* —
+// they're stumbled into by doing something daft. No hints are shown; each stays
+// hidden behind ??? until tripped, then unlocked for good in journal.secrets.
+DATA.SECRETS = [
+  { id: 'automend', icon: '🤖', name: 'Automend™ Engaged',
+    blurb: 'You held M, waiting for the river to mend itself. It will not. A real mend is one honest press at a time — but full marks for ambition.'},
+  { id: 'mendmash', icon: '🥁', name: 'Cool Your Jets',
+    blurb: 'Steady now... the fish can smell your impatience.'},
+];
+
+
 window.DATA = DATA;
