@@ -1016,12 +1016,31 @@ function chosenFlyIdx() {
   return 0;
 }
 
-// Animate a generic fish silhouette eating the dry fly at the current
-// fly position.  Only shown when the top 'top'-slot dry/terrestrial fly
-// was taken.  Take type is derived from the fly's vis rating:
-//   vis 1 (tiny hook, subtle) → sip  (quick, barely-there)
-//   vis 2                     → rise (small fish head cresting)
-//   vis 3 (big hook, visible) → leap (full-body arc, dramatic)
+// scatter a few water-droplet flecks out of the strike point, mostly upward
+// (angle range keeps them off the downward arc so they read as flung spray
+// rather than falling rain)
+function spawnTakeDroplets(svg, NS, count, minD, maxD) {
+  for (let i = 0; i < count; i++) {
+    const angleDeg = -150 + Math.random() * 120;      // up-left .. up-right
+    const angleRad = angleDeg * Math.PI / 180;
+    const dist = minD + Math.random() * (maxD - minD);
+    const drop = document.createElementNS(NS, 'circle');
+    drop.setAttribute('class', 'take-drop');
+    drop.setAttribute('cx', '20'); drop.setAttribute('cy', '20');
+    drop.setAttribute('r', (0.8 + Math.random() * 0.8).toFixed(1));
+    drop.style.setProperty('--dx', (Math.cos(angleRad) * dist).toFixed(1) + 'px');
+    drop.style.setProperty('--dy', (Math.sin(angleRad) * dist).toFixed(1) + 'px');
+    drop.style.animationDelay = (Math.random() * 40) + 'ms';
+    svg.appendChild(drop);
+  }
+}
+
+// Animate a fish striking the dry fly at the current fly position. Only
+// shown when the top 'top'-slot dry/terrestrial fly was taken. Take type is
+// derived from the fly's vis rating:
+//   vis 1 (tiny hook, subtle) → sip  (quick, barely-there — a fin tip only)
+//   vis 2                     → rise (head-and-shoulders porpoising up, mouth agape)
+//   vis 3 (big hook, visible) → leap (full-body clear, tail flick, big splash)
 function spawnTakeAnim(fly) {
   if (!ambientEl) return;
   const dl = SEASON.line && SEASON.line.drift;
@@ -1032,7 +1051,7 @@ function spawnTakeAnim(fly) {
   const flyY = lerp(dl.flyUp[1], dl.flyDown[1], s) * 100;
 
   const kind = fly.vis === 1 ? 'sip' : fly.vis >= 3 ? 'leap' : 'rise';
-  const dur  = fly.vis === 1 ? 420  : fly.vis >= 3  ? 720   : 550;
+  const dur  = fly.vis === 1 ? 520  : fly.vis >= 3  ? 850   : 680;
 
   const NS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(NS, 'svg');
@@ -1051,23 +1070,55 @@ function spawnTakeAnim(fly) {
   ring.setAttribute('rx', '8');  ring.setAttribute('ry', '4');
   svg.appendChild(ring);
 
-  // generic fish silhouette (shape varies by take type)
-  const fish = document.createElementNS(NS, 'path');
+  // the fish itself — a group so the body, tail, eye and mouth all share one
+  // rise/leap/sip transform+fade instead of animating a single flat silhouette
+  const fish = document.createElementNS(NS, 'g');
   fish.setAttribute('class', 'take-fish');
+
   if (kind === 'sip') {
     // just the tip of a back barely breaking the surface (arc only, no fill)
-    fish.setAttribute('d', 'M14 20 A6 4 0 0 1 26 20');
-  } else if (kind === 'leap') {
-    // fish body + forked tail arcing upward
-    fish.setAttribute('d', 'M12 22 C14 14 25 13 28 19 C25 22 15 23 12 22 Z M28 19 L33 15 L32 22 Z');
+    const back = document.createElementNS(NS, 'path');
+    back.setAttribute('d', 'M14 20 A6 4 0 0 1 26 20');
+    fish.appendChild(back);
+    spawnTakeDroplets(svg, NS, 2, 3, 6);
   } else {
-    // small oval head / dorsal hump
-    fish.setAttribute('d', 'M13 21 C14 15 26 15 27 21 C24 24 16 24 13 21 Z');
+    const body = document.createElementNS(NS, 'path');
+    if (kind === 'leap') {
+      // full body + forked tail arcing up out of the water, mouth open on the fly
+      body.setAttribute('d', 'M12 22 C14 14 25 13 28 19 C25 22 15 23 12 22 Z M28 19 L33 15 L32 22 Z');
+    } else {
+      // head-and-shoulders porpoising up, snout tipped toward the fly
+      body.setAttribute('d', 'M12 23 C13 17 17 14 20 14 C23 14 27 17 28 23 C25 25.5 23 23.5 20 23.5 C17 23.5 15 25.5 12 23 Z');
+    }
+    fish.appendChild(body);
+
+    // open mouth — a dark gap right at the surface where the fly disappeared
+    const mouth = document.createElementNS(NS, 'path');
+    mouth.setAttribute('class', 'take-mouth');
+    mouth.setAttribute('d', kind === 'leap' ? 'M12.5 20.5 Q14.5 23 16.5 20.5' : 'M18 14.5 Q20.5 17.3 23 14.8');
+    fish.appendChild(mouth);
+
+    // a small eye so the silhouette reads as a fish, not a rock
+    const eye = document.createElementNS(NS, 'circle');
+    eye.setAttribute('class', 'take-eye');
+    eye.setAttribute('cx', kind === 'leap' ? '16' : '24'); eye.setAttribute('cy', kind === 'leap' ? '18' : '17');
+    eye.setAttribute('r', '1.1');
+    fish.appendChild(eye);
+    const pupil = document.createElementNS(NS, 'circle');
+    pupil.setAttribute('class', 'take-pupil');
+    pupil.setAttribute('cx', kind === 'leap' ? '16.3' : '24.3'); pupil.setAttribute('cy', kind === 'leap' ? '18' : '17');
+    pupil.setAttribute('r', '0.5');
+    fish.appendChild(pupil);
+
+    spawnTakeDroplets(svg, NS, kind === 'leap' ? 6 : 4, kind === 'leap' ? 7 : 5, kind === 'leap' ? 14 : 9);
   }
   svg.appendChild(fish);
 
   ambientEl.appendChild(svg);
   setTimeout(() => svg.remove(), dur + 200);
+
+  // a hard, fast take deserves a smack of a splash to go with the visual
+  if (kind === 'leap') AUDIO.play('takeSplash');
 }
 
 function chooseSpecies(e) {

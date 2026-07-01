@@ -163,24 +163,30 @@ button { font-family: var(--font-display); cursor: pointer; }
   100% { transform: scale(calc(var(--rs,1) * 2.4)); opacity: 0; }
 }
 
-/* fish-eats-dry-fly take animation (spawned at the dry fly's position) */
+/* fish-eats-dry-fly take animation (spawned at the dry fly's position).
+   Sized and contrasted well above the "just visible" threshold — the
+   background water texture already has dark ripples + white highlights at
+   roughly this same tonal range, so a subtle fill blends straight into it. */
 .take-anim {
   position: absolute;
-  width: 40px; height: 40px;
-  margin: -20px 0 0 -20px;
+  width: 64px; height: 64px;
+  margin: -32px 0 0 -32px;
   pointer-events: none;
   overflow: visible;
+  filter: drop-shadow(0 0 3px rgba(0,0,0,0.5));
 }
 .take-ring {
   fill: none;
-  stroke: rgba(245,250,255,0.85);
-  stroke-width: 1.5;
+  stroke: rgba(255,255,255,0.95);
+  stroke-width: 2.4;
   transform-box: fill-box;
   transform-origin: center;
   animation: takeRing var(--dur, 0.55s) ease-out forwards;
 }
 .take-fish {
-  fill: rgba(15,35,55,0.55);
+  fill: rgba(8,20,34,0.85);
+  stroke: rgba(255,255,255,0.6);
+  stroke-width: 1;
   transform-box: fill-box;
   transform-origin: center bottom;
   animation: takeFishRise var(--dur, 0.55s) ease-out forwards;
@@ -188,14 +194,36 @@ button { font-family: var(--font-display); cursor: pointer; }
 /* sip: outline arc only, lifted subtly */
 .take-sip .take-fish {
   fill: none;
-  stroke: rgba(15,35,55,0.55);
-  stroke-width: 1.5;
+  stroke: rgba(255,255,255,0.9);
+  stroke-width: 2.4;
   animation-name: takeFishSip;
 }
 /* leap: full body arcing dramatically */
 .take-leap .take-fish {
-  fill: rgba(15,35,55,0.62);
+  fill: rgba(8,20,34,0.9);
   animation-name: takeFishLeap;
+}
+/* open-mouth gap at the strike point — no fill, just a dark stroked notch */
+.take-mouth {
+  fill: none;
+  stroke: rgba(0,0,0,0.55);
+  stroke-width: 1;
+  stroke-linecap: round;
+}
+.take-eye   { fill: rgba(255,255,255,0.9); }
+.take-pupil { fill: rgba(0,0,0,0.85); }
+
+/* spray flung off the strike — small droplets flying up and out, then falling away */
+.take-drop {
+  fill: rgba(235,245,255,0.9);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: takeDrop var(--dur, 0.55s) ease-out forwards;
+}
+@keyframes takeDrop {
+  0%   { opacity: 0.95; transform: translate(0, 0) scale(1); }
+  60%  { opacity: 0.8; }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.3); }
 }
 @keyframes takeRing {
   0%   { transform: scale(0.2); opacity: 0.9; }
