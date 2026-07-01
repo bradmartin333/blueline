@@ -1000,6 +1000,76 @@ function rollBite(now) {
 // =========================================================
 //  BITE → SET
 // =========================================================
+
+// Which fly slot does the fish take?  Weight each slot by how well its
+// presentation depth matches the current feeding distribution, so fish
+// feeding deep are more likely to grab the dropper, fish keyed on the
+// surface are more likely to sip the top fly.
+function chosenFlyIdx() {
+  const flies = equippedFlies();
+  if (flies.length <= 1) return 0;
+  const phase = A.PHASES[cond.phaseIdx];
+  const weights = flies.map(f => Math.max(0.05, phase.feed[f.depth] || 0.05));
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < weights.length; i++) { r -= weights[i]; if (r <= 0) return i; }
+  return 0;
+}
+
+// Animate a generic fish silhouette eating the dry fly at the current
+// fly position.  Only shown when the top 'top'-slot dry/terrestrial fly
+// was taken.  Take type is derived from the fly's vis rating:
+//   vis 1 (tiny hook, subtle) → sip  (quick, barely-there)
+//   vis 2                     → rise (small fish head cresting)
+//   vis 3 (big hook, visible) → leap (full-body arc, dramatic)
+function spawnTakeAnim(fly) {
+  if (!ambientEl) return;
+  const dl = SEASON.line && SEASON.line.drift;
+  if (!dl || !dl.flyUp || !dl.flyDown) return;
+
+  const s = Math.max(0, Math.min(1, driftProgress));
+  const flyX = lerp(dl.flyUp[0], dl.flyDown[0], s) * 100;
+  const flyY = lerp(dl.flyUp[1], dl.flyDown[1], s) * 100;
+
+  const kind = fly.vis === 1 ? 'sip' : fly.vis >= 3 ? 'leap' : 'rise';
+  const dur  = fly.vis === 1 ? 420  : fly.vis >= 3  ? 720   : 550;
+
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('class', 'take-anim take-' + kind);
+  svg.setAttribute('viewBox', '0 0 40 40');
+  svg.setAttribute('width', '40');
+  svg.setAttribute('height', '40');
+  svg.style.left = flyX + '%';
+  svg.style.top  = flyY + '%';
+  svg.style.setProperty('--dur', dur + 'ms');
+
+  // surface-ring (ellipse that expands and fades)
+  const ring = document.createElementNS(NS, 'ellipse');
+  ring.setAttribute('class', 'take-ring');
+  ring.setAttribute('cx', '20'); ring.setAttribute('cy', '20');
+  ring.setAttribute('rx', '8');  ring.setAttribute('ry', '4');
+  svg.appendChild(ring);
+
+  // generic fish silhouette (shape varies by take type)
+  const fish = document.createElementNS(NS, 'path');
+  fish.setAttribute('class', 'take-fish');
+  if (kind === 'sip') {
+    // just the tip of a back barely breaking the surface (arc only, no fill)
+    fish.setAttribute('d', 'M14 20 A6 4 0 0 1 26 20');
+  } else if (kind === 'leap') {
+    // fish body + forked tail arcing upward
+    fish.setAttribute('d', 'M12 22 C14 14 25 13 28 19 C25 22 15 23 12 22 Z M28 19 L33 15 L32 22 Z');
+  } else {
+    // small oval head / dorsal hump
+    fish.setAttribute('d', 'M13 21 C14 15 26 15 27 21 C24 24 16 24 13 21 Z');
+  }
+  svg.appendChild(fish);
+
+  ambientEl.appendChild(svg);
+  setTimeout(() => svg.remove(), dur + 200);
+}
+
 function chooseSpecies(e) {
   const flies = equippedFlies();
   const depths = presentedDepths();
@@ -1059,14 +1129,16 @@ function triggerBite(e) {
 
   let sizeIn = isLegend ? sp.legend.size * (0.97 + Math.random() * 0.1) : rollSize(speciesId, e);
 
-  const lead = equippedFlies()[0];
+  // determine which fly was taken, weighted by how well its depth matches current feeding
+  const flyIdx = chosenFlyIdx();
+  const lead = equippedFlies()[flyIdx];
   // set window from fly visibility + hook size + rod action
   const rod = A.RODS[tackle.rodId];
   const actionAdj = rod.action === 'fast' ? 1.1 : rod.action === 'slow' ? 0.95 : 1;
   let win = (950 + lead.vis * 470 - (lead.hook - 8) * 42) * actionAdj;
   win = Math.max(750, Math.min(2600, win));
   bite = { speciesId, sizeIn, win, deadline: performance.now() + win,
-           trophy: sizeIn >= sp.trophy, legend: isLegend };
+           trophy: sizeIn >= sp.trophy, legend: isLegend, flyIdx };
 
   fg.src = IMG.drift;
   showFlyLine('drift');                    // match the line to the drift pose (fixes mid-mend takes)
@@ -1075,6 +1147,9 @@ function triggerBite(e) {
   takePrompt.classList.add('hidden');     // SET button is the cue
   driftMini.classList.add('hidden');
   setControls({ set: true });
+  // fish-eating animation: only when the top 'top'-slot fly is a dry/terrestrial
+  const rig = A.RIGS[tackle.rigId];
+  if (flyIdx === 0 && rig.slots[0] === 'top' && lead.cat !== 'nymph') spawnTakeAnim(lead);
   AUDIO.play('hookup');
   // a legendary take announces itself (flashNote runs AFTER the hide above)
   if (isLegend) flashNote('A MONSTER!');
@@ -1119,7 +1194,7 @@ let fightTimeout = null;
 function startFight() {
   state = ST.FIGHT;
   const s = A.SPECIES[bite.speciesId];
-  const lead = equippedFlies()[0];
+  const lead = equippedFlies()[bite.flyIdx || 0];
   const sizeFactor = (bite.sizeIn - s.size[0]) / (s.size[2] - s.size[0]); // 0..1
   const leg = bite.legend;
   let need = Math.round(3 + s.fight * 3.5 + sizeFactor * 2);       // strips to land
@@ -1218,8 +1293,8 @@ function landFish() {
   const lines = A.CATCH_LINES[cls];
   const flavor = lines[Math.floor(Math.random() * lines.length)];
 
-  // snapshot for the trophy card
-  const lead = equippedFlies()[0];
+  // snapshot for the trophy card — use the fly that was actually taken
+  const lead = equippedFlies()[bite.flyIdx || 0];
   const rig = A.RIGS[tackle.rigId];
   lastCatch = {
     speciesId: bite.speciesId, species: s.name,
@@ -1239,7 +1314,7 @@ function landFish() {
     rigId: tackle.rigId, fly: lead, seasonId: SEASON_ID, hatch: cond.hatch,
     phaseId: A.PHASES[cond.phaseIdx].id, light: cond.light,
     streak: catchStreak, slamDay, daySpeciesCount: Object.keys(daySpecies).length,
-    dryEat: !!lead && rig.slots.every(sl => sl === 'top') && lead.cat !== 'nymph',
+    dryEat: !!lead && lead.cat !== 'nymph',
     diceRolled: tackleWasRolled, perfectCastStreak,
   };
   checkAchievements(ctx);
