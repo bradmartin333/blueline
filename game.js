@@ -68,7 +68,8 @@ const castBtn = $('cast-btn'), mendBtn = $('mend-btn'), setBtn = $('set-btn'), r
 const driftMini = $('drift-mini'), driftMiniFill = $('drift-mini-fill'), driftMiniVal = $('drift-mini-val');
 const takePrompt = $('take-prompt');
 const fightEl = $('fight'), greenZone = $('green-zone'),
-      indicator = $('indicator'), stripBtn = $('strip-btn');
+      indicator = $('indicator'), stripBtn = $('strip-btn'),
+      fightFish = $('fight-fish'), fightLine = $('fight-line'), fightAction = $('fight-species-action');
 const reveal = $('reveal'), revRibbon = $('reveal-ribbon'), revSpecies = $('reveal-species'),
       revInches = $('reveal-inches'), revImg = $('reveal-img'), revFlavor = $('reveal-flavor'),
       releaseBtn = $('release-btn');
@@ -746,6 +747,9 @@ function toIdle() {
   takePrompt.classList.add('hidden');
   reveal.classList.add('hidden');
   fightEl.classList.add('hidden');
+  fightEl.classList.remove('legend-fight', 'fight-brook', 'fight-rainbow', 'fight-brown', 'fight-cutthroat');
+  if (fightFish) fightFish.className = '';
+  if (fightAction) fightAction.textContent = 'FISH ON';
   setControls({ cast: true });
   renderMatch();
   syncTackleLock();
@@ -1353,6 +1357,48 @@ function missBite() {
 // =========================================================
 let fight = null;
 let fightTimeout = null;
+
+function speciesFightAction(s) {
+  const aerial = s.aerial || 0;
+  const r = Math.random();
+  if (aerial > 0.75) return r < 0.55 ? 'jump' : r < 0.82 ? 'shake' : 'surge';
+  if (aerial < 0.35) return r < 0.62 ? 'surge' : r < 0.9 ? 'shake' : 'jump';
+  return r < 0.35 ? 'jump' : r < 0.72 ? 'surge' : 'shake';
+}
+function actionLabel(action, s) {
+  if (action === 'jump') return `${s.name.toUpperCase()} JUMPS`;
+  if (action === 'surge') return `${s.name.toUpperCase()} SURGES`;
+  return `${s.name.toUpperCase()} HEADSHAKES`;
+}
+function setFightPose(action, s) {
+  if (!fightFish || !fightAction || !fightLine) return;
+  fightFish.classList.remove('jump', 'surge', 'shake');
+  if (action) fightFish.classList.add(action);
+  fightAction.textContent = action ? actionLabel(action, s) : `${s.name.toUpperCase()} ON`;
+}
+function triggerFightAction(action, ms) {
+  if (!fight || state !== ST.FIGHT) return;
+  fight.action = action;
+  setFightPose(action, fight.s);
+  setTimeout(() => {
+    if (!fight || state !== ST.FIGHT || fight.action !== action) return;
+    fight.action = null;
+    setFightPose(null, fight.s);
+  }, ms);
+}
+function updateFightVisual(now) {
+  if (!fight || !fightFish || !fightLine) return;
+  const x = 42 + fight.pos * 0.45;
+  const y = 66 + Math.sin(now / 220) * (6 + fight.s.fight * 4);
+  const rot = Math.sin(now / 180) * (5 + fight.s.aerial * 6) + (fight.action === 'surge' ? 6 : 0);
+  const pull = 16 + (fight.pos / 100) * 44 + (fight.action === 'surge' ? 18 : 0) + (fight.action === 'jump' ? -12 : 0);
+  const angle = (fight.pos - 50) * 0.28 + (fight.action === 'jump' ? -9 : 0) + (fight.action === 'shake' ? Math.sin(now / 65) * 2.8 : 0);
+  fightEl.style.setProperty('--fight-fish-x', `${x.toFixed(1)}px`);
+  fightEl.style.setProperty('--fight-fish-y', `${y.toFixed(1)}px`);
+  fightEl.style.setProperty('--fight-fish-rot', `${rot.toFixed(1)}deg`);
+  fightEl.style.setProperty('--fight-line-pull', `${pull.toFixed(1)}px`);
+  fightEl.style.setProperty('--fight-line-angle', `${angle.toFixed(1)}deg`);
+}
 function startFight() {
   state = ST.FIGHT;
   const s = A.SPECIES[bite.speciesId];
@@ -1365,10 +1411,16 @@ function startFight() {
   let base = 0.46;
   if (leg) { need += 3; speed += 0.35; tippetRisk = Math.min(0.85, tippetRisk + 0.18); base = 0.4; }
   fight = { need, got: 0, speed, pos: 0, dir: 1, zoneL: 0, zoneW: 0,
-            tippetRisk, raf: null, base };
+            tippetRisk, raf: null, base, s, action: null, nextActionAt: 0 };
 
   fightEl.classList.toggle('legend-fight', !!leg);
+  fightEl.classList.remove('fight-brook', 'fight-rainbow', 'fight-brown', 'fight-cutthroat');
+  fightEl.classList.add(`fight-${bite.speciesId}`);
   fightEl.classList.remove('hidden');
+  if (fightFish) { fightFish.src = s.img; fightFish.alt = s.name; }
+  setFightPose(null, s);
+  updateFightVisual(performance.now());
+  fight.nextActionAt = performance.now() + 520;
   fg.style.display = 'none';
   placeZone();
   AUDIO.play('reel', 4);
@@ -1394,6 +1446,12 @@ function runIndicator() {
     if (fight.pos >= 100) { fight.pos = 100; fight.dir = -1; }
     if (fight.pos <= 0) { fight.pos = 0; fight.dir = 1; }
     indicator.style.left = fight.pos + '%';
+    if (!fight.action && now >= fight.nextActionAt) {
+      const action = speciesFightAction(fight.s);
+      fight.nextActionAt = now + 950 + Math.random() * 1300 * (1 - fight.s.fight * 0.3);
+      triggerFightAction(action, action === 'jump' ? 560 : action === 'surge' ? 380 : 320);
+    }
+    updateFightVisual(now);
     fight.raf = requestAnimationFrame(loop);
   }
   fight.raf = requestAnimationFrame(loop);
@@ -1405,6 +1463,7 @@ function doStrip() {
   const inZone = fight.pos >= fight.zoneL && fight.pos <= fight.zoneL + fight.zoneW;
   if (inZone) {
     fight.got++;
+    triggerFightAction('surge', 280);
     AUDIO.play('reel', 3);
     if (fight.got >= fight.need) { landFish(); return; }
     placeZone();
@@ -1416,6 +1475,7 @@ function doStrip() {
       return;
     }
     fight.got = Math.max(0, fight.got - 1);
+    triggerFightAction((fight.s.aerial > 0.55 && Math.random() < 0.35) ? 'jump' : 'shake', 300);
     placeZone();
   }
 }
@@ -1428,7 +1488,8 @@ function landFish() {
   cancelAnimationFrame(fight.raf);
   state = ST.REVEAL;
   fightEl.classList.add('hidden');
-  fightEl.classList.remove('legend-fight');
+  fightEl.classList.remove('legend-fight', 'fight-brook', 'fight-rainbow', 'fight-brown', 'fight-cutthroat');
+  if (fightFish) fightFish.className = '';
   const s = A.SPECIES[bite.speciesId];
   const inches = bite.sizeIn;
   const isLegend = bite.legend;
@@ -1508,7 +1569,8 @@ function loseFish(dramatic) {
   if (fight) cancelAnimationFrame(fight.raf);
   state = ST.REVEAL;
   fightEl.classList.add('hidden');
-  fightEl.classList.remove('legend-fight');
+  fightEl.classList.remove('legend-fight', 'fight-brook', 'fight-rainbow', 'fight-brown', 'fight-cutthroat');
+  if (fightFish) fightFish.className = '';
   catchStreak = 0;                   // broke off → streak resets
   journal.casts++;
   saveJournal();

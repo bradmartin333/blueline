@@ -64,15 +64,24 @@
       <button id="reel-in-btn" class="btn btn-ghost hidden">RESET</button>
     </div>
 
-    <!-- fight minigame — simplified -->
+    <!-- fight minigame — reel in from the bottom -->
     <div id="fight" class="hidden">
-      <div id="tension-wrap">
-        <div id="tension-bar">
-          <div id="green-zone"></div>
-          <div id="indicator"></div>
+      <div id="fight-scene" aria-hidden="true">
+        <div id="fight-line"></div>
+        <img id="fight-fish" alt="">
+      </div>
+      <div id="fight-controls">
+        <div id="tension-wrap">
+          <div id="tension-bar">
+            <div id="green-zone"></div>
+            <div id="indicator"></div>
+          </div>
+        </div>
+        <div class="fight-bottom">
+          <div id="fight-species-action">FISH ON</div>
+          <button id="strip-btn" class="btn btn-set" style="animation:none">STRIP</button>
         </div>
       </div>
-      <button id="strip-btn" class="btn btn-set" style="animation:none">STRIP</button>
     </div>
 
     <!-- fish reveal -->
