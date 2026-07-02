@@ -62,7 +62,8 @@ const locImageList = (img) => [...img.bg, ...img.cast, ...img.castLine, img.drif
 // ---------------- DOM ----------------
 const bg = $('background'), bg2 = $('background2'), fg = $('foreground');
 const castLineEl = $('cast-line');
-const flyLine = $('fly-line'), flyPath = $('fly-line-path'), flyDot = $('fly-dot');
+const flyLine = $('fly-line'), flyPath = $('fly-line-path'), flyDot = $('fly-dot'),
+      flyLeader = $('fly-leader-path'), flyTippet = $('fly-tippet-path'), flyDot2 = $('fly-dot2');
 const castBtn = $('cast-btn'), mendBtn = $('mend-btn'), setBtn = $('set-btn'), reelBtn = $('reel-in-btn');
 const driftMini = $('drift-mini'), driftMiniFill = $('drift-mini-fill'), driftMiniVal = $('drift-mini-val');
 const takePrompt = $('take-prompt');
@@ -177,6 +178,7 @@ let lineAnchors = null;   // current SEASON.line[state] entry
 let lineRAF = null;
 let lineJerk = 0;         // 0..1 transient that pulls the line taut on a strike
 let mendBow = 0;          // 0..1 transient that flips the line's arc upstream after a mend
+let takeTrack = null;     // live take animation whose mouth the fly + line end rides
 
 // Single source of truth for the foreground's transform. Both the <img> and the
 // fly-line rod-tip are derived from these, so the line can never lag/detach from
@@ -202,10 +204,29 @@ function flyMarkerKind() {
   if (rig.slots.every(s => s === 'drop')) return 'ind';        // nymph → strike indicator
   return 'fly';                                                // dry → fuzzy distant fly
 }
+
+// double-dry rig: the second dry rides a length of tippet beyond the first,
+// following the cast direction in x but mirrored in y, so it lands upstream
+// of (further out than) the first fly instead of back toward the viewer
+const TIPPET_LEN = 88;   // stage px between the two dries
+function isDoubleDry() {
+  const rig = A.RIGS[tackle.rigId];
+  return rig.slots.length === 2 && rig.slots.every(s => s === 'top');
+}
+function tippetOffset(rx, ry, fxp, fyp) {
+  const dx = fxp - rx, dy = fyp - ry;
+  const d = Math.hypot(dx, dy) || 1;
+  return [dx / d * TIPPET_LEN, -dy / d * TIPPET_LEN];
+}
+
 function updateFlyMarker() {
   const k = flyMarkerKind();
   flyDot.setAttribute('class', k);
   flyDot.setAttribute('r', k === 'foam' ? 5.5 : k === 'fly' ? 5.5 : 4.5);
+  const dd = isDoubleDry();
+  flyTippet.style.display = dd ? '' : 'none';
+  flyDot2.style.display = dd ? '' : 'none';
+  if (dd) { flyDot2.setAttribute('class', 'fly'); flyDot2.setAttribute('r', 4.5); }
 }
 
 function updateLineColor() {
@@ -224,6 +245,24 @@ function hideFlyLine() {
   flyLine.classList.remove('show');
   if (lineRAF != null) { cancelAnimationFrame(lineRAF); lineRAF = null; }
 }
+// Current stage-px position of the striking fish's mouth, or null while it's
+// not measurable yet. Mirrors the .take-clip / .take-fish-img layout in
+// style.css (clip bottom 3px under the waterline, img bottom-aligned with its
+// left edge on the strike x before its transform runs) and reads the img's
+// LIVE mid-animation matrix, so the line can never drift apart from the fish.
+// All species art faces left, mouth at the left tip, mid-height.
+function takeMouthPoint() {
+  const img = takeTrack.img;
+  const w = img.offsetWidth, h = img.offsetHeight;
+  if (!w || !h) return null;
+  const cs = getComputedStyle(img).transform;
+  if (!cs || cs === 'none') return null;
+  const M = new DOMMatrix(cs);
+  const px = 0.03 * w - w / 2, py = 0.5 * h - h / 2;   // mouth relative to the transform origin (center)
+  return [takeTrack.ax + w / 2 + M.a * px + M.c * py + M.e,
+          takeTrack.ay + 3 - h / 2 + M.b * px + M.d * py + M.f];
+}
+
 function drawFlyLine(now) {
   if (!lineAnchors || !flyLine.classList.contains('show')) { lineRAF = null; return; }
   const t = now / 1000;
@@ -245,6 +284,31 @@ function drawFlyLine(now) {
   const fxp = flyN[0] * SW_STAGE, fyp = flyN[1] * SH_STAGE;
   const dq = drifting ? driftQuality : 100;
 
+  // double-dry: the second fly floats a tippet-length past the first, along
+  // the cast direction
+  const dd = isDoubleDry();
+  let e2x = 0, e2y = 0, bob2 = Math.sin(t * 1.6 + 1.1) * 2;
+  if (dd) { const [ox, oy] = tippetOffset(rx, ry, fxp, fyp); e2x = fxp + ox; e2y = fyp + oy; }
+
+  // While a take animation plays, the taken fly + its line end ride the
+  // fish's mouth from the moment it breaks the surface; as the fish sounds
+  // again, the end point is handed back to the surface where the fly went
+  // under. On a double-dry the fish may have eaten either fly.
+  let ex = fxp, ey = fyp, bob = Math.sin(t * 1.6) * 2;
+  if (takeTrack && state === ST.BITE) {
+    const m = takeMouthPoint();
+    if (m) {
+      if (!takeTrack.contacted && m[1] <= takeTrack.ay + 8) takeTrack.contacted = true;
+      if (takeTrack.contacted) {
+        const sink = Math.max(0, Math.min(1, (m[1] - takeTrack.ay) / 30));
+        const tx = lerp(m[0], takeTrack.ax, sink);
+        const ty = lerp(Math.min(m[1], takeTrack.ay + 22), takeTrack.ay, sink);
+        if (dd && takeTrack.flyIdx === 1) { e2x = tx; e2y = ty; bob2 = 0; }
+        else { ex = tx; ey = ty; bob = 0; }
+      }
+    }
+  }
+
   // The arc of the line reflects drag: it bellies DOWNSTREAM (−x here) and grows as the
   // drift degrades. A mend flips that belly UPSTREAM, then it relaxes back as drag rebuilds.
   const baseMag = (lineAnchors.sag || 0.06) * SH_STAGE;
@@ -256,11 +320,28 @@ function drawFlyLine(now) {
   }
   if (lineJerk > 0) { lateral *= (1 - 0.85 * lineJerk); lineJerk = Math.max(0, lineJerk - 0.045); }
   const sway = Math.sin(t * 1.6) * 4 + Math.sin(t * 0.7) * 2;
-  const mx = (rx + fxp) / 2 + lateral + sway;             // control point: lateral arc
-  const my = (ry + fyp) / 2 + baseMag * 0.5;              // slight gravity sag
-  flyPath.setAttribute('d', `M ${rx.toFixed(1)} ${ry.toFixed(1)} Q ${mx.toFixed(1)} ${my.toFixed(1)} ${fxp.toFixed(1)} ${fyp.toFixed(1)}`);
-  flyDot.setAttribute('cx', fxp.toFixed(1));
-  flyDot.setAttribute('cy', (fyp + Math.sin(t * 1.6) * 2).toFixed(1));
+  const mx = (rx + ex) / 2 + lateral + sway;              // control point: lateral arc
+  // gravity sag: a slack, dragging line hangs deeper; a strike pulls it straight
+  const my = (ry + ey) / 2 + baseMag * (0.45 + 0.4 * dragBow) * (1 - 0.75 * lineJerk);
+
+  // The rig tapers like the real thing: colored fly line from the rod for most
+  // of the way, then a near-clear leader for the last stretch to the fly.
+  // Split the quadratic exactly (de Casteljau) so the curve stays seamless.
+  const LT = 0.78;
+  const c1x = lerp(rx, mx, LT),   c1y = lerp(ry, my, LT);
+  const c2x = lerp(mx, ex, LT),   c2y = lerp(my, ey, LT);
+  const jx  = lerp(c1x, c2x, LT), jy  = lerp(c1y, c2y, LT);
+  flyPath.setAttribute('d', `M ${rx.toFixed(1)} ${ry.toFixed(1)} Q ${c1x.toFixed(1)} ${c1y.toFixed(1)} ${jx.toFixed(1)} ${jy.toFixed(1)}`);
+  flyLeader.setAttribute('d', `M ${jx.toFixed(1)} ${jy.toFixed(1)} Q ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}`);
+  flyDot.setAttribute('cx', ex.toFixed(1));
+  flyDot.setAttribute('cy', (ey + bob).toFixed(1));
+  if (dd) {
+    // fine tippet from the first fly on to the second, with a touch of sag
+    const sx = (ex + e2x) / 2, sy = (ey + e2y) / 2 + 6;
+    flyTippet.setAttribute('d', `M ${ex.toFixed(1)} ${(ey + bob).toFixed(1)} Q ${sx.toFixed(1)} ${sy.toFixed(1)} ${e2x.toFixed(1)} ${e2y.toFixed(1)}`);
+    flyDot2.setAttribute('cx', e2x.toFixed(1));
+    flyDot2.setAttribute('cy', (e2y + bob2).toFixed(1));
+  }
   lineRAF = requestAnimationFrame(drawFlyLine);
 }
 
@@ -1000,6 +1081,156 @@ function rollBite(now) {
 // =========================================================
 //  BITE → SET
 // =========================================================
+
+// Which fly slot does the fish take?  Weight each slot by how well its
+// presentation depth matches the current feeding distribution, so fish
+// feeding deep are more likely to grab the dropper, fish keyed on the
+// surface are more likely to sip the top fly.
+function chosenFlyIdx() {
+  const flies = equippedFlies();
+  if (flies.length <= 1) return 0;
+  const phase = A.PHASES[cond.phaseIdx];
+  const weights = flies.map(f => Math.max(0.05, phase.feed[f.depth] || 0.05));
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < weights.length; i++) { r -= weights[i]; if (r <= 0) return i; }
+  return 0;
+}
+
+// scatter a few water-droplet flecks out of the strike point, mostly upward
+// (angle range keeps them off the downward arc so they read as flung spray
+// rather than falling rain); baseDelay holds the spray until the moment the
+// fish actually breaks the surface partway into the animation
+function spawnTakeDroplets(svg, NS, count, minD, maxD, baseDelay) {
+  for (let i = 0; i < count; i++) {
+    const angleDeg = -150 + Math.random() * 120;      // up-left .. up-right
+    const angleRad = angleDeg * Math.PI / 180;
+    const dist = minD + Math.random() * (maxD - minD);
+    const drop = document.createElementNS(NS, 'circle');
+    drop.setAttribute('class', 'take-drop');
+    drop.setAttribute('cx', '20'); drop.setAttribute('cy', '20');
+    drop.setAttribute('r', (0.8 + Math.random() * 0.8).toFixed(1));
+    drop.style.setProperty('--dx', (Math.cos(angleRad) * dist).toFixed(1) + 'px');
+    drop.style.setProperty('--dy', (Math.sin(angleRad) * dist).toFixed(1) + 'px');
+    drop.style.animationDelay = Math.round((baseDelay || 0) + Math.random() * 60) + 'ms';
+    svg.appendChild(drop);
+  }
+}
+
+// Animate a fish striking the dry fly at the current fly position, using the
+// real species art (preloaded at boot) instead of a drawn silhouette. The
+// image lives in a box clipped at the waterline so only what breaks the
+// surface is ever visible, is scaled by the rolled fish size, and is darkened
+// a touch so it beds into the water. The take kind:
+//   sip  — the back barely crests the film
+//   rise — head-and-shoulders porpoise, nose-up
+//   leap — full body clears, arcs over, splashy re-entry
+// comes from the fly's vis rating (big visible hooks provoke harder takes)
+// shaded by species temperament (aerial: rainbows go airborne, browns stay
+// low) plus a dice roll, so repeats stay fresh. Speed, crest height, leap
+// apex and body rotation all jitter per take; leap clearance is relative to
+// the fish — small fish clear more of their own body length than heavy ones.
+// flyIdx says which fly got eaten: on a double-dry rig index 1 strikes at the
+// second fly, a tippet-length beyond the first in the cast direction.
+function spawnTakeAnim(fly, speciesId, sizeIn, flyIdx) {
+  if (!ambientEl) return;
+  const dl = SEASON.line && SEASON.line.drift;
+  if (!dl || !dl.flyUp || !dl.flyDown) return;
+
+  const s = Math.max(0, Math.min(1, driftProgress));
+  let flyX = lerp(dl.flyUp[0], dl.flyDown[0], s) * 100;
+  let flyY = lerp(dl.flyUp[1], dl.flyDown[1], s) * 100;
+  // double-dry second fly: strike happens a tippet-length out, in the cast direction
+  if (flyIdx === 1 && lineAnchors) {
+    const [rx, ry] = fgTipPoint(lineAnchors.rod);
+    const [ox, oy] = tippetOffset(rx, ry, flyX / 100 * SW_STAGE, flyY / 100 * SH_STAGE);
+    flyX += ox / SW_STAGE * 100;
+    flyY += oy / SH_STAGE * 100;
+  }
+
+  const aerial = A.SPECIES[speciesId].aerial != null ? A.SPECIES[speciesId].aerial : 0.5;
+  const energy = fly.vis + (aerial - 0.5) * 1.6 + (Math.random() - 0.5) * 1.2;
+  const kind = energy < 1.7 ? 'sip' : energy < 2.7 ? 'rise' : 'leap';
+  const dur  = Math.round((kind === 'sip' ? 640 : kind === 'leap' ? 1050 : 820)
+                          * (0.85 + Math.random() * 0.3));
+
+  const wrap = document.createElement('div');
+  wrap.className = 'take-anim take-' + kind;
+  wrap.style.left = flyX + '%';
+  wrap.style.top  = flyY + '%';
+  wrap.style.setProperty('--dur', dur + 'ms');
+
+  // per-take motion variety, fed into the keyframes as CSS vars
+  // fish come at the fly from either side: the art faces left, --dir -1
+  // mirrors the body, its rotation and its travel (and the mouth tracking
+  // reads the computed matrix, so it follows the flip for free)
+  wrap.style.setProperty('--dir', Math.random() < 0.5 ? 1 : -1);
+  wrap.style.setProperty('--rotK', (0.8 + aerial * 0.25 + Math.random() * 0.2).toFixed(2));
+  if (kind === 'sip') {
+    wrap.style.setProperty('--crest', Math.round(50 + Math.random() * 16) + '%');
+  } else if (kind === 'rise') {
+    wrap.style.setProperty('--crest', Math.round(6 + Math.random() * 22) + '%');
+  } else {
+    // %s are of body height, so clearance scales with the fish; the size term
+    // keeps a heavy fish from clearing as many body lengths as a small one
+    const clearK = Math.max(0.7, Math.min(1.25, 1.45 - sizeIn / 28)) * (0.85 + Math.random() * 0.35);
+    wrap.style.setProperty('--apex',  Math.round(-62 * clearK) + '%');
+    wrap.style.setProperty('--apex2', Math.round(-48 * clearK) + '%');
+  }
+
+  // dark shape swelling up under the surface just before the strike
+  const shadow = document.createElement('div');
+  shadow.className = 'take-shadow';
+  wrap.appendChild(shadow);
+
+  // the fish: real species art in a waterline-clipped box, sized by the fish
+  const clip = document.createElement('div');
+  clip.className = 'take-clip';
+  const img = document.createElement('img');
+  img.className = 'take-fish-img';
+  img.src = A.SPECIES[speciesId].img;
+  // the stage scales to fit the viewport (ambient renders ~0.6x on a typical
+  // window), so these widths are deliberately larger than they'll appear
+  img.style.width = Math.round(Math.max(76, Math.min(170, 60 + sizeIn * 3.5))) + 'px';
+  clip.appendChild(img);
+  wrap.appendChild(clip);
+  // the taken fly's line end rides this fish's mouth; ax/ay anchor the wrap
+  // in stage px so mouth tracking stays exact under the bite shake
+  takeTrack = { img, contacted: false, flyIdx,
+                ax: flyX / 100 * SW_STAGE, ay: flyY / 100 * SH_STAGE };
+
+  // surface ring + flung spray in an SVG overlay (overflow lets them fly wide)
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('class', 'take-fx');
+  svg.setAttribute('viewBox', '0 0 40 40');
+  const ring = document.createElementNS(NS, 'ellipse');
+  ring.setAttribute('class', 'take-ring');
+  ring.setAttribute('cx', '20'); ring.setAttribute('cy', '20');
+  ring.setAttribute('rx', '8');  ring.setAttribute('ry', '4');
+  svg.appendChild(ring);
+  if (kind === 'leap') {
+    // second ring where the fish crashes back down
+    const ring2 = ring.cloneNode();
+    ring2.classList.add('re-entry');
+    svg.appendChild(ring2);
+  }
+  const sprayDelay = dur * (kind === 'sip' ? 0.2 : 0.14);
+  if (kind === 'leap')      spawnTakeDroplets(svg, NS, 7, 7, 15, sprayDelay);
+  else if (kind === 'rise') spawnTakeDroplets(svg, NS, 4, 5, 9,  sprayDelay);
+  else                      spawnTakeDroplets(svg, NS, 2, 3, 6,  sprayDelay);
+  wrap.appendChild(svg);
+
+  ambientEl.appendChild(wrap);
+  setTimeout(() => {
+    wrap.remove();
+    if (takeTrack && takeTrack.img === img) takeTrack = null;
+  }, dur + 250);
+
+  // a hard, fast take deserves a smack of a splash to go with the visual
+  if (kind === 'leap') AUDIO.play('takeSplash');
+}
+
 function chooseSpecies(e) {
   const flies = equippedFlies();
   const depths = presentedDepths();
@@ -1059,14 +1290,16 @@ function triggerBite(e) {
 
   let sizeIn = isLegend ? sp.legend.size * (0.97 + Math.random() * 0.1) : rollSize(speciesId, e);
 
-  const lead = equippedFlies()[0];
+  // determine which fly was taken, weighted by how well its depth matches current feeding
+  const flyIdx = chosenFlyIdx();
+  const lead = equippedFlies()[flyIdx];
   // set window from fly visibility + hook size + rod action
   const rod = A.RODS[tackle.rodId];
   const actionAdj = rod.action === 'fast' ? 1.1 : rod.action === 'slow' ? 0.95 : 1;
   let win = (950 + lead.vis * 470 - (lead.hook - 8) * 42) * actionAdj;
   win = Math.max(750, Math.min(2600, win));
   bite = { speciesId, sizeIn, win, deadline: performance.now() + win,
-           trophy: sizeIn >= sp.trophy, legend: isLegend };
+           trophy: sizeIn >= sp.trophy, legend: isLegend, flyIdx };
 
   fg.src = IMG.drift;
   showFlyLine('drift');                    // match the line to the drift pose (fixes mid-mend takes)
@@ -1075,6 +1308,10 @@ function triggerBite(e) {
   takePrompt.classList.add('hidden');     // SET button is the cue
   driftMini.classList.add('hidden');
   setControls({ set: true });
+  // fish-eating animation: whenever the taken fly is a surface ('top' slot)
+  // dry/terrestrial — on a double-dry rig either fly can get eaten on screen
+  const rig = A.RIGS[tackle.rigId];
+  if (rig.slots[flyIdx] === 'top' && lead.cat !== 'nymph') spawnTakeAnim(lead, speciesId, sizeIn, flyIdx);
   AUDIO.play('hookup');
   // a legendary take announces itself (flashNote runs AFTER the hide above)
   if (isLegend) flashNote('A MONSTER!');
@@ -1119,7 +1356,7 @@ let fightTimeout = null;
 function startFight() {
   state = ST.FIGHT;
   const s = A.SPECIES[bite.speciesId];
-  const lead = equippedFlies()[0];
+  const lead = equippedFlies()[bite.flyIdx || 0];
   const sizeFactor = (bite.sizeIn - s.size[0]) / (s.size[2] - s.size[0]); // 0..1
   const leg = bite.legend;
   let need = Math.round(3 + s.fight * 3.5 + sizeFactor * 2);       // strips to land
@@ -1218,8 +1455,8 @@ function landFish() {
   const lines = A.CATCH_LINES[cls];
   const flavor = lines[Math.floor(Math.random() * lines.length)];
 
-  // snapshot for the trophy card
-  const lead = equippedFlies()[0];
+  // snapshot for the trophy card — use the fly that was actually taken
+  const lead = equippedFlies()[bite.flyIdx || 0];
   const rig = A.RIGS[tackle.rigId];
   lastCatch = {
     speciesId: bite.speciesId, species: s.name,
@@ -1239,7 +1476,7 @@ function landFish() {
     rigId: tackle.rigId, fly: lead, seasonId: SEASON_ID, hatch: cond.hatch,
     phaseId: A.PHASES[cond.phaseIdx].id, light: cond.light,
     streak: catchStreak, slamDay, daySpeciesCount: Object.keys(daySpecies).length,
-    dryEat: !!lead && rig.slots.every(sl => sl === 'top') && lead.cat !== 'nymph',
+    dryEat: !!lead && lead.cat !== 'nymph',
     diceRolled: tackleWasRolled, perfectCastStreak,
   };
   checkAchievements(ctx);

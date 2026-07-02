@@ -94,12 +94,26 @@ button { font-family: var(--font-display); cursor: pointer; }
   stroke-width: 2.4; stroke-linecap: round;
   filter: drop-shadow(0 0 1.6px rgba(0,0,0,0.55));
 }
+/* the last stretch to the fly is leader, not fly line: nearly clear, finer —
+   the colored running line should never appear tied straight to the fly */
+#fly-leader-path {
+  fill: none;
+  stroke: rgba(234,240,222,0.6);
+  stroke-width: 1.6; stroke-linecap: round;
+}
+/* double-dry: a fine length of tippet running on to the second fly —
+   thinner and fainter still, the way real tippet reads */
+#fly-tippet-path {
+  fill: none;
+  stroke: rgba(234,240,222,0.55);
+  stroke-width: 1.4; stroke-linecap: round;
+}
 /* fly-end marker — style depends on the rig (set via class in JS) */
-#fly-dot { filter: drop-shadow(0 0 3px rgba(0,0,0,0.45)); }
+#fly-dot, #fly-dot2 { filter: drop-shadow(0 0 3px rgba(0,0,0,0.45)); }
 /* nymph → bright strike indicator */
 #fly-dot.ind  { fill: #ff7e3a; stroke: #7a2c10; stroke-width: 1.2; }
 /* dry → a fuzzy fly seen from a distance */
-#fly-dot.fly  { fill: #b7a17e; stroke: none; filter: blur(1.4px); opacity: 0.85; }
+#fly-dot.fly, #fly-dot2.fly { fill: #b7a17e; stroke: none; filter: blur(1.4px); opacity: 0.85; }
 /* hopper → a neon spec of foam */
 #fly-dot.foam { fill: #dcff45; stroke: #a4e000; stroke-width: 1; filter: drop-shadow(0 0 5px rgba(190,255,60,0.95)); }
 
@@ -161,6 +175,110 @@ button { font-family: var(--font-display); cursor: pointer; }
   0%   { transform: scale(calc(var(--rs,1) * 0.15)); opacity: 0; }
   12%  { opacity: 0.9; }
   100% { transform: scale(calc(var(--rs,1) * 2.4)); opacity: 0; }
+}
+
+/* fish-eats-dry-fly take animation (spawned at the dry fly's position).
+   The fish is the real species art in a box clipped at the waterline, so
+   only what breaks the surface ever shows; the expanding ring and flung
+   spray sell the strike point, and an underwater shadow telegraphs the
+   fish coming up a beat before it breaks. */
+.take-anim { position: absolute; width: 0; height: 0; pointer-events: none; }
+.take-fx {
+  position: absolute; left: -32px; top: -32px;
+  width: 64px; height: 64px;
+  overflow: visible;
+  filter: drop-shadow(0 0 3px rgba(0,0,0,0.5));
+}
+.take-ring {
+  fill: none;
+  stroke: rgba(255,255,255,0.95);
+  stroke-width: 2.4;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: takeRing var(--dur, 0.55s) ease-out forwards;
+}
+/* leap only: second splash ring when the fish crashes back down */
+.take-ring.re-entry {
+  opacity: 0;
+  animation-delay: calc(var(--dur, 0.55s) * 0.66);
+  animation-duration: calc(var(--dur, 0.55s) * 0.34);   /* finishes before the node is removed */
+}
+
+/* dark shape swelling up under the surface just before the fish shows */
+.take-shadow {
+  position: absolute; left: -32px; top: -7px;
+  width: 64px; height: 18px;
+  border-radius: 50%;
+  background: rgba(8, 20, 30, 0.6);
+  filter: blur(4px);
+  opacity: 0;
+  animation: takeShadow var(--dur, 0.55s) ease-out forwards;
+}
+
+/* waterline clip: bottom edge sits a hair below the strike point, so the
+   fish emerging past the box bottom reads as coming through the surface */
+.take-clip {
+  position: absolute; left: -80px; bottom: -3px;
+  width: 160px; height: 120px;
+  overflow: hidden;
+}
+.take-fish-img {
+  position: absolute; left: 50%; bottom: 0;
+  transform: translate(-50%, 300%) scaleX(var(--dir, 1));   /* fully submerged until the keyframes run */
+  filter: brightness(0.82) saturate(0.85) drop-shadow(0 2px 2px rgba(0,0,0,0.45));
+  animation: var(--dur, 0.55s) ease-in-out forwards;
+}
+/* fish art faces left, so nose-up is a positive rotation; --dir -1 mirrors
+   the whole take (scaleX sits between translate and rotate, so the rotation
+   and lateral travel flip along with the body) */
+.take-sip  .take-fish-img { animation-name: takeImgSip; }
+.take-rise .take-fish-img { animation-name: takeImgRise; }
+.take-leap .take-fish-img { animation-name: takeImgLeap; animation-timing-function: cubic-bezier(0.34, 0.55, 0.6, 1); }
+
+/* spray flung off the strike — small droplets flying up and out, then falling away */
+.take-drop {
+  fill: rgba(235,245,255,0.9);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: takeDrop var(--dur, 0.55s) ease-out forwards;
+}
+@keyframes takeDrop {
+  0%   { opacity: 0.95; transform: translate(0, 0) scale(1); }
+  60%  { opacity: 0.8; }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.3); }
+}
+@keyframes takeRing {
+  0%   { transform: scale(0.2); opacity: 0.9; }
+  100% { transform: scale(2);   opacity: 0; }
+}
+@keyframes takeShadow {
+  0%   { opacity: 0;    transform: scale(0.25); }
+  16%  { opacity: 0.65; transform: scale(1); }
+  40%  { opacity: 0.2; }
+  70%, 100% { opacity: 0; transform: scale(1.1); }
+}
+/* translate %s are of the fish's own height, so the motion scales with the
+   fish; large positive Y = hidden below the waterline clip. Per-take variety
+   comes in as CSS vars set by spawnTakeAnim: --crest (how high the sip/rise
+   comes up), --apex/--apex2 (leap height, size-adjusted), --rotK (rotation
+   multiplier — aerial species throw their bodies around more) */
+@keyframes takeImgSip {
+  0%   { transform: translate(-50%, 115%) scaleX(var(--dir, 1)) rotate(calc(var(--rotK, 1) * 3deg)); }
+  42%  { transform: translate(-50%, var(--crest, 58%)) scaleX(var(--dir, 1)) rotate(calc(var(--rotK, 1) * 8deg)); }
+  62%  { transform: translate(-50%, calc(var(--crest, 58%) + 6%)) scaleX(var(--dir, 1)) rotate(calc(var(--rotK, 1) * 6deg)); }
+  100% { transform: translate(-50%, 120%) scaleX(var(--dir, 1)) rotate(calc(var(--rotK, 1) * 2deg)); }
+}
+@keyframes takeImgRise {
+  0%   { transform: translate(calc(-50% + var(--dir, 1) * 6%), 230%) scaleX(var(--dir, 1)) rotate(calc(var(--rotK, 1) * 20deg)); }
+  40%  { transform: translate(calc(-50% + var(--dir, 1) * 2%), var(--crest, 16%)) scaleX(var(--dir, 1)) rotate(calc(var(--rotK, 1) * 38deg)); }
+  58%  { transform: translate(-50%, calc(var(--crest, 16%) + 8%)) scaleX(var(--dir, 1)) rotate(calc(var(--rotK, 1) * 34deg)); }
+  100% { transform: translate(calc(-50% - var(--dir, 1) * 6%), 245%) scaleX(var(--dir, 1)) rotate(calc(var(--rotK, 1) * 16deg)); }
+}
+@keyframes takeImgLeap {
+  0%   { transform: translate(calc(-50% + var(--dir, 1) * 8%), 300%) scaleX(var(--dir, 1)) rotate(calc(var(--rotK, 1) * 28deg)); }
+  38%  { transform: translate(calc(-50% - var(--dir, 1) * 2%), var(--apex, -62%)) scaleX(var(--dir, 1)) rotate(calc(var(--rotK, 1) * 50deg)); }
+  60%  { transform: translate(calc(-50% - var(--dir, 1) * 12%), var(--apex2, -48%)) scaleX(var(--dir, 1)) rotate(calc(var(--rotK, 1) * 6deg)); }
+  100% { transform: translate(calc(-50% - var(--dir, 1) * 24%), 320%) scaleX(var(--dir, 1)) rotate(calc(var(--rotK, 1) * -40deg)); }
 }
 
 /* the drift pan/bob is driven in JS (per-frame transform); only the bite shake is CSS */

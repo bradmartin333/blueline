@@ -350,6 +350,10 @@ const AUDIO = (function () {
     hookup() { // fish on — rising bright tone
       tone(440, 0.22, 'triangle', 0.16, 760);
     },
+    takeSplash() { // a fast/aggressive take — fish smacks the surface hard
+      noiseBurst(0.4, 'lowpass', 2000, 0.5, 0.4, 220);
+      tone(150, 0.22, 'sine', 0.18, 60);
+    },
     strip() { // line strip pull
       noiseBurst(0.14, 'bandpass', 900, 1.2, 0.12, 500);
     },

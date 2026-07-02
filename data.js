@@ -220,13 +220,15 @@ DATA.weightRank = { light: 0, medium: 1, heavy: 2 };
 // spook: how much clear water / bad stealth hurts your odds
 // size: [min, mode, max] inches  ;  trophy: inches that counts as a trophy
 // fight: 0..1 strength → longer fight, more break risk
+// aerial: 0..1 temperament of surface takes — high leaps clear (rainbow),
+//         low sips and stays down (brown)
 // img
 DATA.SPECIES = {
   brook: {
     name: 'Brook Trout', img: 'assets/fish/brook.webp', weight: 1.0,
     foods: ['caddis','terrestrial','midge','attractor'], depths: ['surface','film','shallow'],
     lightLove: ['low','soft'], spook: 0.6,
-    size: [5, 8, 13], trophy: 11, fight: 0.3,
+    size: [5, 8, 13], trophy: 11, fight: 0.3, aerial: 0.65,
     blurb: 'Eager and gorgeous. Will smash a caddis at dusk all day long.',
     legend: { name: 'The Cedar Sentinel', size: 16,
       blurb: 'An ancient char that haunts the deep cedar pool — bigger than any brookie has a right to be.' } },
@@ -234,7 +236,7 @@ DATA.SPECIES = {
     name: 'Rainbow Trout', img: 'assets/fish/rainbow.webp', weight: 0.85,
     foods: ['bwo','pmd','midge','attractor'], depths: ['film','shallow','deep'],
     lightLove: ['soft','bright'], spook: 1.0,
-    size: [8, 12, 18], trophy: 16, fight: 0.6,
+    size: [8, 12, 18], trophy: 16, fight: 0.6, aerial: 1.0,
     blurb: 'Mid-column generalist. Acrobatic — expect jumps and screaming runs.',
     legend: { name: 'Chrome', size: 24,
       blurb: 'A slab of polished steel that cartwheels into the backing the instant it feels the hook.' } },
@@ -242,7 +244,7 @@ DATA.SPECIES = {
     name: 'Brown Trout', img: 'assets/fish/brown.webp', weight: 0.45,
     foods: ['stonefly','terrestrial','caddis'], depths: ['shallow','deep'],
     lightLove: ['low'], spook: 1.5,
-    size: [10, 15, 23], trophy: 18, fight: 0.85,
+    size: [10, 15, 23], trophy: 18, fight: 0.85, aerial: 0.2,
     blurb: 'Wary and big. Holds to structure, hunts the low light. The prize of the run.',
     legend: { name: 'Old Scarjaw', size: 30,
       blurb: 'The hook-jawed monster of the logjam. Anglers have a hundred stories and zero photos.' } },
@@ -250,7 +252,7 @@ DATA.SPECIES = {
     name: 'Cutthroat Trout', img: 'assets/fish/cutthroat.webp', weight: 0.6,
     foods: ['attractor','terrestrial','stonefly'], depths: ['surface','film','shallow'],
     lightLove: ['soft','bright'], spook: 0.8,
-    size: [8, 12, 18], trophy: 16, fight: 0.5,
+    size: [8, 12, 18], trophy: 16, fight: 0.5, aerial: 0.45,
     blurb: 'Native cutt with the crimson slash. Opportunistic — rises happily to a big attractor dry.',
     legend: { name: 'The Ghost of Slate Run', size: 23,
       blurb: 'A buttery old native with a blood-red slash, seen only at first and last light.' } },
