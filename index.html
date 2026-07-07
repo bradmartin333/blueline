@@ -67,10 +67,13 @@
     <!-- fight minigame — reel in from the bottom -->
     <div id="fight" class="hidden">
       <div id="fight-scene" aria-hidden="true">
+        <div id="fight-water"></div>
         <div id="fight-line"></div>
+        <div id="fight-splash"></div>
         <img id="fight-fish" alt="">
       </div>
       <div id="fight-controls">
+        <div id="fight-status">FISH ON</div>
         <div id="tension-wrap">
           <div id="tension-bar">
             <div id="green-zone"></div>
@@ -78,7 +81,7 @@
           </div>
         </div>
         <div class="fight-bottom">
-          <div id="fight-species-action">FISH ON</div>
+          <div id="fight-progress" aria-hidden="true"></div>
           <button id="strip-btn" class="btn btn-set" style="animation:none">STRIP</button>
         </div>
       </div>
