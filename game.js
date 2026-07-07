@@ -68,7 +68,9 @@ const castBtn = $('cast-btn'), mendBtn = $('mend-btn'), setBtn = $('set-btn'), r
 const driftMini = $('drift-mini'), driftMiniFill = $('drift-mini-fill'), driftMiniVal = $('drift-mini-val');
 const takePrompt = $('take-prompt');
 const fightEl = $('fight'), greenZone = $('green-zone'),
-      indicator = $('indicator'), stripBtn = $('strip-btn');
+      indicator = $('indicator'), stripBtn = $('strip-btn'),
+      fightScene = $('fight-scene'), fightFish = $('fight-fish'), fightLine = $('fight-line'),
+      fightSplash = $('fight-splash'), fightStatus = $('fight-status'), fightProgress = $('fight-progress');
 const reveal = $('reveal'), revRibbon = $('reveal-ribbon'), revSpecies = $('reveal-species'),
       revInches = $('reveal-inches'), revImg = $('reveal-img'), revFlavor = $('reveal-flavor'),
       releaseBtn = $('release-btn');
@@ -746,6 +748,7 @@ function toIdle() {
   takePrompt.classList.add('hidden');
   reveal.classList.add('hidden');
   fightEl.classList.add('hidden');
+  fightEl.classList.remove('legend-fight', 'danger', 'tired', 'fight-brook', 'fight-rainbow', 'fight-brown', 'fight-cutthroat');
   setControls({ cast: true });
   renderMatch();
   syncTackleLock();
@@ -1353,6 +1356,115 @@ function missBite() {
 // =========================================================
 let fight = null;
 let fightTimeout = null;
+
+// The fish fights back with species-flavored events that change the rules for
+// a beat — the scene box telegraphs them and the status line says what to do:
+//   JUMP  (aerial fish)  → danger: strip while it's airborne and it can throw the hook. Bow to it.
+//   RUN   (strong fish)  → danger: clamp down on a run and the tippet can snap. Let it run.
+//   SHAKE               → the marker rattles; strips still count but timing gets hard.
+// Riding out a danger event leaves the fish briefly tired: the marker slows and
+// the zone glows — that's your window. The fish's spot in the scene is the real
+// scoreboard: every clean strip hauls it up toward the rod tip.
+const FISH_EVT = {
+  jump:  { dur: 850,  danger: true },
+  run:   { dur: 1050, danger: true },
+  shake: { dur: 650,  danger: false },
+};
+function pickFishEvent(s) {
+  const aerial = s.aerial || 0;
+  const r = Math.random();
+  if (aerial > 0.75) return r < 0.55 ? 'jump' : r < 0.82 ? 'shake' : 'run';
+  if (aerial < 0.35) return r < 0.62 ? 'run' : r < 0.9 ? 'shake' : 'jump';
+  return r < 0.35 ? 'jump' : r < 0.72 ? 'run' : 'shake';
+}
+function scheduleFishEvent(from) {
+  // stronger fish act up more often
+  fight.nextEvtAt = from + (2200 + Math.random() * 2600) * (1.15 - fight.s.fight * 0.45);
+}
+function startFishEvent(now) {
+  const type = pickFishEvent(fight.s);
+  fight.evt = { type, start: now, dur: FISH_EVT[type].dur };
+  fightEl.classList.toggle('danger', FISH_EVT[type].danger);
+  if (type === 'jump') { AUDIO.play('takeSplash'); splashAt(fight.fx); }
+  else if (type === 'run') AUDIO.play('reel', 5);
+}
+function endFishEvent(now, survived) {
+  const type = fight.evt.type;
+  fight.evt = null;
+  fightEl.classList.remove('danger');
+  if (type === 'jump') splashAt(fight.fx);   // re-entry splash
+  if (survived && FISH_EVT[type].danger) fight.tiredUntil = now + 1300;
+  scheduleFishEvent(Math.max(now, fight.tiredUntil));
+}
+function splashAt(xPct) {
+  if (!fightSplash) return;
+  fightSplash.style.left = xPct + '%';
+  fightSplash.classList.remove('go');
+  void fightSplash.offsetWidth;               // restart the animation
+  fightSplash.classList.add('go');
+}
+function flashFightStatus(text, mood, ms) {
+  fight.flash = { text, mood, until: performance.now() + (ms || 900) };
+}
+function fightStatusLine(now) {
+  if (fight.flash && now < fight.flash.until) return fight.flash;
+  if (fight.evt) {
+    const t = fight.evt.type;
+    if (t === 'jump') return { text: 'IT JUMPS — BOW TO IT, DON\'T STRIP', mood: 'danger' };
+    if (t === 'run')  return { text: 'IT RUNS — LET IT RUN', mood: 'danger' };
+    return { text: 'HEADSHAKE — STEADY…', mood: 'warn' };
+  }
+  if (now < fight.tiredUntil) return { text: 'IT\'S TIRING — STRIP NOW', mood: 'good' };
+  return { text: `${fight.s.name.toUpperCase()} ON — STRIP IN THE GREEN`, mood: '' };
+}
+function renderFightStatus(now) {
+  if (!fightStatus) return;
+  const line = fightStatusLine(now);
+  if (line.text !== fight.lastStatus) {
+    fight.lastStatus = line.text;
+    fightStatus.textContent = line.text;
+    fightStatus.className = line.mood || '';
+  }
+}
+function renderFightProgress() {
+  if (!fightProgress) return;
+  let html = '';
+  for (let i = 0; i < fight.need; i++) html += `<span class="${i < fight.got ? 'on' : ''}"></span>`;
+  fightProgress.innerHTML = html;
+}
+function updateFightVisual(now) {
+  if (!fight || !fightFish || !fightLine || !fightScene) return;
+  const s = fight.s;
+  const p = fight.got / fight.need;                    // reel-in progress 0..1
+  const evt = fight.evt;
+  const et = evt ? Math.min(1, (now - evt.start) / evt.dur) : 0;
+  // deep and far when hooked; each strip hauls it up toward the rod tip
+  let x = 68 - p * 34 + Math.sin(now / 900) * 2.5;
+  let y = 64 - p * 20 + Math.sin(now / 520) * (2.5 + s.fight * 2.5);
+  let rot = Math.sin(now / 260) * (4 + s.aerial * 4);
+  if (evt) {
+    const arc = Math.sin(Math.PI * et);
+    if (evt.type === 'jump')     { y -= arc * (y - 13); rot -= arc * 24; }
+    else if (evt.type === 'run') { x += arc * 17; y += arc * 7; rot += arc * 9; }
+    else                         { rot += Math.sin(now / 38) * 12; }
+  }
+  if (fight.pull && now < fight.pull.until) {          // a good strip visibly gains line
+    const k = (fight.pull.until - now) / fight.pull.dur;
+    x -= k * 6; y -= k * 4;
+  }
+  fight.fx = x; fight.fy = y;
+  fightEl.style.setProperty('--fight-fish-x', x.toFixed(2) + '%');
+  fightEl.style.setProperty('--fight-fish-y', y.toFixed(2) + '%');
+  fightEl.style.setProperty('--fight-fish-rot', rot.toFixed(1) + 'deg');
+  // fly line: rod tip (top-left) to the fish's mouth
+  const w = fightScene.clientWidth, h = fightScene.clientHeight;
+  const dx = w * x / 100 - fightFish.clientWidth * 0.34 - w * 0.07;
+  const dy = Math.max(8, h * y / 100 - 4);
+  fightEl.style.setProperty('--fight-line-len', Math.hypot(dx, dy).toFixed(1) + 'px');
+  // CSS rotate() is clockwise on screen, which swings a down-pointing element
+  // toward -x — negate so the line's tip lands on the fish
+  fightEl.style.setProperty('--fight-line-angle', (-Math.atan2(dx, dy) * 180 / Math.PI).toFixed(2) + 'deg');
+}
 function startFight() {
   state = ST.FIGHT;
   const s = A.SPECIES[bite.speciesId];
@@ -1364,11 +1476,20 @@ function startFight() {
   let tippetRisk = Math.max(0, (lead.hook - 12) / 10) * (0.4 + sizeFactor);
   let base = 0.46;
   if (leg) { need += 3; speed += 0.35; tippetRisk = Math.min(0.85, tippetRisk + 0.18); base = 0.4; }
-  fight = { need, got: 0, speed, pos: 0, dir: 1, zoneL: 0, zoneW: 0,
-            tippetRisk, raf: null, base };
+  fight = { need, got: 0, speed, pos: 0, dir: 1, effPos: 0, zoneL: 0, zoneW: 0,
+            tippetRisk, raf: null, base, s,
+            evt: null, nextEvtAt: 0, tiredUntil: 0, flash: null, pull: null,
+            fx: 68, fy: 64, lastStatus: '' };
 
   fightEl.classList.toggle('legend-fight', !!leg);
+  fightEl.classList.remove('danger', 'tired', 'fight-brook', 'fight-rainbow', 'fight-brown', 'fight-cutthroat');
+  fightEl.classList.add(`fight-${bite.speciesId}`);
   fightEl.classList.remove('hidden');
+  if (fightFish) { fightFish.src = s.img; fightFish.alt = s.name; }
+  renderFightProgress();
+  updateFightVisual(performance.now());
+  renderFightStatus(performance.now());
+  fight.nextEvtAt = performance.now() + 1500 + Math.random() * 1200;
   fg.style.display = 'none';
   placeZone();
   AUDIO.play('reel', 4);
@@ -1376,7 +1497,7 @@ function startFight() {
 
   // timeout — fish escapes if you idle (a legend gives you a little longer)
   clearTimeout(fightTimeout);
-  fightTimeout = setTimeout(() => { if (state === ST.FIGHT) loseFish(false); }, leg ? 26000 : 20000);
+  fightTimeout = setTimeout(() => { if (state === ST.FIGHT) loseFish(false); }, leg ? 30000 : 22000);
 }
 function placeZone() {
   const W = 100;
@@ -1390,10 +1511,21 @@ function runIndicator() {
   function loop(now) {
     if (state !== ST.FIGHT) return;
     const dt = (now - last) / 1000; last = now;
-    fight.pos += fight.dir * fight.speed * 60 * dt;
+    const tired = now < fight.tiredUntil;
+    const spd = fight.speed * (tired ? 0.5 : 1) *
+                (fight.evt && fight.evt.type === 'run' ? 1.4 : 1);
+    fight.pos += fight.dir * spd * 60 * dt;
     if (fight.pos >= 100) { fight.pos = 100; fight.dir = -1; }
     if (fight.pos <= 0) { fight.pos = 0; fight.dir = 1; }
-    indicator.style.left = fight.pos + '%';
+    // a headshake rattles the marker — strips still count but timing gets shaky
+    const wobble = (fight.evt && fight.evt.type === 'shake') ? Math.sin(now / 40) * 7 : 0;
+    fight.effPos = Math.max(0, Math.min(100, fight.pos + wobble));
+    indicator.style.left = fight.effPos + '%';
+    if (!fight.evt && !tired && now >= fight.nextEvtAt) startFishEvent(now);
+    if (fight.evt && now >= fight.evt.start + fight.evt.dur) endFishEvent(now, true);
+    fightEl.classList.toggle('tired', tired);
+    updateFightVisual(now);
+    renderFightStatus(now);
     fight.raf = requestAnimationFrame(loop);
   }
   fight.raf = requestAnimationFrame(loop);
@@ -1401,11 +1533,38 @@ function runIndicator() {
 function doStrip() {
   if (state !== ST.FIGHT) return;
   AUDIO.play('strip');
-  // strip frame flash
-  const inZone = fight.pos >= fight.zoneL && fight.pos <= fight.zoneL + fight.zoneW;
+  const now = performance.now();
+  const evt = fight.evt;
+  if (evt && evt.type === 'jump') {
+    // tight line on an airborne fish — the cardinal sin
+    if (Math.random() < 0.55) {
+      loseFish(false, 'You kept it tight through the leap and it threw the hook. Bow to the next one.', 'THREW THE HOOK');
+      return;
+    }
+    fight.got = Math.max(0, fight.got - 1);
+    endFishEvent(now, false);
+    flashFightStatus('TIGHT ON A JUMP — IT SLIPPED BACK', 'danger', 1100);
+    renderFightProgress(); placeZone();
+    return;
+  }
+  if (evt && evt.type === 'run') {
+    // clamping down on a running fish loads the tippet
+    if (Math.random() < 0.3 + fight.tippetRisk * 0.5) {
+      loseFish(true, 'You clamped down on the run and the tippet snapped.', 'SNAP!');
+      return;
+    }
+    fight.got = Math.max(0, fight.got - 1);
+    endFishEvent(now, false);
+    flashFightStatus('IT RIPPED THE LINE BACK OUT', 'danger', 1100);
+    renderFightProgress(); placeZone();
+    return;
+  }
+  const inZone = fight.effPos >= fight.zoneL && fight.effPos <= fight.zoneL + fight.zoneW;
   if (inZone) {
     fight.got++;
+    fight.pull = { until: now + 300, dur: 300 };
     AUDIO.play('reel', 3);
+    renderFightProgress();
     if (fight.got >= fight.need) { landFish(); return; }
     placeZone();
   } else {
@@ -1416,6 +1575,8 @@ function doStrip() {
       return;
     }
     fight.got = Math.max(0, fight.got - 1);
+    flashFightStatus('SLACK — IT DOVE BACK DOWN', 'danger', 900);
+    renderFightProgress();
     placeZone();
   }
 }
@@ -1428,7 +1589,7 @@ function landFish() {
   cancelAnimationFrame(fight.raf);
   state = ST.REVEAL;
   fightEl.classList.add('hidden');
-  fightEl.classList.remove('legend-fight');
+  fightEl.classList.remove('legend-fight', 'danger', 'tired', 'fight-brook', 'fight-rainbow', 'fight-brown', 'fight-cutthroat');
   const s = A.SPECIES[bite.speciesId];
   const inches = bite.sizeIn;
   const isLegend = bite.legend;
@@ -1503,12 +1664,12 @@ function landFish() {
   pity = 0.7;   // just caught → reset the pity timer
 }
 
-function loseFish(dramatic) {
+function loseFish(dramatic, msg, head) {
   clearTimeout(fightTimeout);
   if (fight) cancelAnimationFrame(fight.raf);
   state = ST.REVEAL;
   fightEl.classList.add('hidden');
-  fightEl.classList.remove('legend-fight');
+  fightEl.classList.remove('legend-fight', 'danger', 'tired', 'fight-brook', 'fight-rainbow', 'fight-brown', 'fight-cutthroat');
   catchStreak = 0;                   // broke off → streak resets
   journal.casts++;
   saveJournal();
@@ -1518,10 +1679,10 @@ function loseFish(dramatic) {
     fg.classList.add('shake');
     setTimeout(() => {
       fg.classList.remove('shake');
-      showLost('It bulldogged for the logjam and broke you off.', 'SNAP!');
+      showLost(msg || 'It bulldogged for the logjam and broke you off.', head || 'SNAP!');
     }, 1300);
   } else {
-    showLost('The hook pulled free. That\'s fishing.', 'LOST IT');
+    showLost(msg || 'The hook pulled free. That\'s fishing.', head || 'LOST IT');
   }
 }
 function showLost(msg, head) {
